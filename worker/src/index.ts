@@ -1,163 +1,285 @@
-// ============================================================
-// ErrorLens Edge Worker API
-// 100% Free-Tier DevOps & Cloud Troubleshooting RAG Platform
-// ============================================================
+import type { Env, TroubleshootResponse } from './types';
+import { checkRateLimit, purgeRateLimitBuckets } from './storage/rate-limit';
+import { readCache, writeCache, bumpCacheHit, purgeExpiredCache } from './core/cache';
+import { retrieve } from './core/rag';
+import { generate } from './core/ai';
+import { clamp, getRunbookBySlug, incrementHitCount, listRunbooks } from './storage/d1';
+import { purgeLogs, writeLog, type LogEntry } from './storage/logs';
+import { recordUsage } from './storage/usage';
+import { hashIp } from './core/security';
+import { handleAdmin } from './admin/api';
+import { renderAdminPanel } from './admin/panel';
 
-import type { Env, TroubleshootRequest } from './types';
-import { checkRateLimit } from './storage/rate-limit';
-import { getCachedResponse, setCachedResponse } from './core/cache';
-import { retrieveRelevantRunbooks } from './core/rag';
-import { generateTroubleshootPlan } from './core/ai';
-import { listAllRunbooks, getRunbookBySlug } from './storage/d1';
+const MAX_QUERY_CHARS = 1000;
+const MAX_BODY_BYTES = 8 * 1024;
 
-const CORS_HEADERS: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
-  'Access-Control-Max-Age': '86400',
-};
-
-function json(data: any, status = 200, extraHeaders: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      'Content-Type': 'application/json',
-      ...CORS_HEADERS,
-      ...extraHeaders,
-    },
-  });
-}
+const VERSION = '0.1.0';
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    const path = url.pathname;
+    const started = Date.now();
 
-    // 1. Handle CORS Preflight
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: CORS_HEADERS });
+      return new Response(null, { status: 204, headers: corsHeaders() });
     }
 
-    const clientIp = request.headers.get('CF-Connecting-IP') || '127.0.0.1';
+    const log = (entry: Omit<LogEntry, 'route' | 'method'>) => {
+      ctx.waitUntil(
+        Promise.all([
+          writeLog(env, { route: path, method: request.method, ...entry }),
+          recordUsage(env, {
+            requests: 1,
+            troubleshoots: path === '/api/troubleshoot' ? 1 : 0,
+            cache_hits: entry.cacheHit ? 1 : 0,
+            rate_limited: entry.rateLimited ? 1 : 0,
+            errors: entry.status >= 500 ? 1 : 0,
+          }),
+        ]).then(() => undefined)
+      );
+    };
 
-    // 2. Health & Diagnostics Endpoint
-    if (url.pathname === '/api/health' && request.method === 'GET') {
-      return json({
-        status: 'ok',
-        service: 'ErrorLens Edge RAG',
-        timestamp: new Date().toISOString(),
-        version: '1.0.0',
-        bindings: {
-          d1: Boolean(env.DB),
-          vectorize: Boolean(env.VECTOR_INDEX),
-          workers_ai: Boolean(env.AI),
-          kv: Boolean(env.KV),
-          gemini: Boolean(env.GEMINI_API_KEY),
-        },
-      });
-    }
-
-    // 3. Catalog: List Runbooks (For Autocomplete & Quick Chips)
-    if (url.pathname === '/api/runbooks' && request.method === 'GET') {
-      const category = url.searchParams.get('category') || undefined;
-      const limit = Math.min(100, parseInt(url.searchParams.get('limit') || '50', 10));
-
-      try {
-        const runbooks = await listAllRunbooks(env.DB, category, limit);
-        return json({ total: runbooks.length, runbooks });
-      } catch (err: any) {
-        return json({ error: 'Failed to fetch runbooks', details: err.message }, 500);
+    try {
+      if (path === '/api/health' && request.method === 'GET') {
+        return json({
+          status: 'ok',
+          version: VERSION,
+          environment: env.ENVIRONMENT ?? 'unknown',
+          time: new Date().toISOString(),
+          bindings: {
+            d1: Boolean(env.DB),
+            vectorize: Boolean(env.VECTOR_INDEX),
+            workers_ai: Boolean(env.AI),
+            gemini_key: Boolean(env.GEMINI_API_KEY),
+            admin_token: Boolean(env.ADMIN_TOKEN),
+          },
+        });
       }
-    }
 
-    // 4. Catalog: Get Single Runbook by Slug
-    if (url.pathname.startsWith('/api/runbooks/') && request.method === 'GET') {
-      const slug = url.pathname.replace('/api/runbooks/', '').trim();
-      try {
+      if (path === '/api/runbooks' && request.method === 'GET') {
+        const result = await listRunbooks(env.DB, {
+          category: url.searchParams.get('category') ?? undefined,
+          limit: clamp(Number.parseInt(url.searchParams.get('limit') ?? '50', 10), 1, 100),
+          offset: clamp(Number.parseInt(url.searchParams.get('offset') ?? '0', 10), 0, 100_000),
+        });
+        log({ status: 200, durationMs: Date.now() - started });
+        return json(result);
+      }
+
+      if (path.startsWith('/api/runbooks/') && request.method === 'GET') {
+        const slug = decodeURIComponent(path.slice('/api/runbooks/'.length)).trim();
+        if (!slug) return json({ error: 'Runbook slug is required' }, 400);
+
         const runbook = await getRunbookBySlug(env.DB, slug);
-        if (!runbook) {
-          return json({ error: 'Runbook not found' }, 404);
-        }
-        return json({ runbook });
-      } catch (err: any) {
-        return json({ error: 'Failed to fetch runbook', details: err.message }, 500);
+        log({ status: runbook ? 200 : 404, durationMs: Date.now() - started, matchedSlug: slug });
+        return runbook ? json({ runbook }) : json({ error: 'Runbook not found' }, 404);
       }
+
+      if (path === '/api/troubleshoot' && request.method === 'POST') {
+        return await handleTroubleshoot(request, env, ctx, started, log);
+      }
+
+      if (path === '/admin' || path === '/admin/') {
+        return html(renderAdminPanel());
+      }
+
+      if (path.startsWith('/api/admin/')) {
+        return await handleAdmin(request, env, path);
+      }
+
+      // Anything else under /api is a real 404. Without this the SPA asset
+      // handler below answers with index.html and a 200, which makes a typo in
+      // a fetch() call look like a successful request returning HTML.
+      if (path.startsWith('/api/')) {
+        return json({ error: 'Not found', path }, 404);
+      }
+
+      if (env.ASSETS) {
+        const res = await env.ASSETS.fetch(request);
+        return withSecurityHeaders(res);
+      }
+
+      return json({ error: 'Not found', path }, 404);
+    } catch (err) {
+      const ref = crypto.randomUUID().slice(0, 8);
+      console.error(`[${ref}] unhandled:`, err);
+      log({ status: 500, durationMs: Date.now() - started, errorKind: 'unhandled' });
+      // The reference is logged next to the stack trace; the client gets the
+      // reference only. Echoing err.message here is how internals leak.
+      return json({ error: 'Internal error', reference: ref }, 500);
     }
-
-    // 5. Main RAG Troubleshooting Endpoint
-    if (url.pathname === '/api/troubleshoot' && request.method === 'POST') {
-      const startTime = Date.now();
-
-      // Rate Limit Check
-      const rateCheck = await checkRateLimit(env, clientIp);
-      if (!rateCheck.allowed) {
-        return json(
-          {
-            error: 'Rate Limit Exceeded',
-            message: rateCheck.reason,
-            retry_after: rateCheck.resetSeconds,
-          },
-          429,
-          { 'Retry-After': String(rateCheck.resetSeconds) }
-        );
-      }
-
-      let body: TroubleshootRequest;
-      try {
-        body = await request.json<TroubleshootRequest>();
-      } catch {
-        return json({ error: 'Invalid JSON payload' }, 400);
-      }
-
-      const query = (body.query || '').trim();
-      if (!query) {
-        return json({ error: 'Query parameter is required' }, 400);
-      }
-
-      if (query.length > 1000) {
-        return json({ error: 'Query exceeds maximum allowed length of 1000 characters' }, 400);
-      }
-
-      // Check Edge Cache First (Sub-20ms instant hit at $0 LLM cost)
-      const cached = await getCachedResponse(env, query);
-      if (cached) {
-        cached.meta.duration_ms = Date.now() - startTime;
-        return json(cached, 200, { 'X-Cache-Status': 'HIT' });
-      }
-
-      try {
-        // Step 1: Hybrid Retrieval (D1 FTS5 + Vectorize + RRF)
-        const { matches, strategy } = await retrieveRelevantRunbooks(env, query, 3);
-
-        // Step 2: Multi-Tier Generation (Gemini 2.5 Flash-Lite -> Workers AI -> Catalog)
-        const { result, modelUsed } = await generateTroubleshootPlan(env, query, matches);
-
-        const durationMs = Date.now() - startTime;
-        result.meta.duration_ms = durationMs;
-        result.meta.model = modelUsed;
-        result.meta.search_strategy = strategy;
-        result.meta.from_cache = false;
-
-        // Step 3: Cache result in background for next users
-        ctx.waitUntil(setCachedResponse(env, query, result));
-
-        return json(result, 200, { 'X-Cache-Status': 'MISS' });
-      } catch (err: any) {
-        console.error('[Troubleshoot Pipeline Error]:', err);
-        return json(
-          {
-            error: 'Troubleshooting pipeline encountered an internal issue',
-            details: err.message,
-          },
-          500
-        );
-      }
-    }
-
-    // 6. Serve Frontend Static Assets (Single Page App)
-    if (env.ASSETS) {
-      return env.ASSETS.fetch(request);
-    }
-
-    return json({ error: 'Not Found', path: url.pathname }, 404);
   },
-};
+
+  /**
+   * Nightly housekeeping. Every table on the write path has a retention rule;
+   * without one, D1's 5 GB free allowance is a countdown rather than a limit.
+   */
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(
+      (async () => {
+        const retention = Number.parseInt(env.LOG_RETENTION_DAYS ?? '', 10) || 30;
+        const [cache, buckets, logs] = await Promise.all([
+          purgeExpiredCache(env),
+          purgeRateLimitBuckets(env),
+          purgeLogs(env, retention),
+        ]);
+        console.log(
+          `[cron] purged cache=${cache} rate_buckets=${buckets} logs=${logs} (retention ${retention}d)`
+        );
+      })()
+    );
+  },
+} satisfies ExportedHandler<Env>;
+
+type LogFn = (entry: Omit<LogEntry, 'route' | 'method'>) => void;
+
+async function handleTroubleshoot(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  started: number,
+  log: LogFn
+): Promise<Response> {
+  const clientIp = request.headers.get('CF-Connecting-IP') ?? '0.0.0.0';
+  const country = request.headers.get('CF-IPCountry') ?? undefined;
+  const salt = env.IP_HASH_SALT ?? 'errorlens-dev-salt';
+  const ipHash = await hashIp(clientIp, salt);
+
+  const verdict = await checkRateLimit(env, ipHash);
+  if (!verdict.allowed) {
+    log({ status: 429, durationMs: Date.now() - started, ipHash, country, rateLimited: true });
+    return json({ error: 'Rate limited', message: verdict.reason, retry_after: verdict.retryAfter }, 429, {
+      'Retry-After': String(verdict.retryAfter),
+      'X-RateLimit-Remaining': '0',
+    });
+  }
+
+  const contentLength = Number.parseInt(request.headers.get('Content-Length') ?? '0', 10);
+  if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
+    log({ status: 413, durationMs: Date.now() - started, ipHash, country });
+    return json({ error: 'Request body too large' }, 413);
+  }
+
+  let body: { query?: unknown };
+  try {
+    body = (await request.json()) as { query?: unknown };
+  } catch {
+    log({ status: 400, durationMs: Date.now() - started, ipHash, country, errorKind: 'bad_json' });
+    return json({ error: 'Request body must be valid JSON' }, 400);
+  }
+
+  const query = typeof body.query === 'string' ? body.query.trim() : '';
+  if (!query) {
+    log({ status: 400, durationMs: Date.now() - started, ipHash, country, errorKind: 'no_query' });
+    return json({ error: 'A "query" string is required' }, 400);
+  }
+  if (query.length > MAX_QUERY_CHARS) {
+    log({ status: 400, durationMs: Date.now() - started, ipHash, country, errorKind: 'query_too_long' });
+    return json({ error: `Query must be ${MAX_QUERY_CHARS} characters or fewer` }, 400);
+  }
+
+  const cached = await readCache(env, query);
+  if (cached) {
+    cached.meta.duration_ms = Date.now() - started;
+    ctx.waitUntil(bumpCacheHit(env, query));
+    log({
+      status: 200,
+      durationMs: cached.meta.duration_ms,
+      ipHash,
+      country,
+      queryText: query,
+      matchedSlug: cached.matched_runbook?.slug,
+      searchStrategy: 'cache',
+      model: cached.meta.model,
+      cacheHit: true,
+    });
+    return json(cached, 200, { 'X-Cache': 'HIT', 'X-RateLimit-Remaining': String(verdict.remaining) });
+  }
+
+  const { matches, strategy, dimsQueried } = await retrieve(env, query, 3);
+  const generated = await generate(env, query, matches);
+
+  const response: TroubleshootResponse = generated.response;
+  response.meta.model = generated.model;
+  response.meta.search_strategy = strategy;
+  response.meta.from_cache = false;
+  response.meta.duration_ms = Date.now() - started;
+
+  ctx.waitUntil(
+    Promise.all([
+      writeCache(env, query, response),
+      recordUsage(env, {
+        gemini_calls: generated.provider === 'gemini' ? 1 : 0,
+        workers_ai_calls: generated.provider === 'workers-ai' ? 1 : 0,
+        neurons_estimate: generated.neurons,
+        vectorize_dims: dimsQueried,
+      }),
+      matches[0] ? incrementHitCount(env.DB, matches[0].runbook.id) : Promise.resolve(),
+    ]).then(() => undefined)
+  );
+
+  log({
+    status: 200,
+    durationMs: response.meta.duration_ms,
+    ipHash,
+    country,
+    queryText: query,
+    matchedSlug: response.matched_runbook?.slug,
+    searchStrategy: strategy,
+    model: generated.model,
+  });
+
+  return json(response, 200, {
+    'X-Cache': 'MISS',
+    'X-RateLimit-Remaining': String(verdict.remaining),
+  });
+}
+
+function corsHeaders(): Record<string, string> {
+  return {
+    // The read API is public by design, so a wildcard origin is correct here.
+    // There are no cookies and no credentialed requests to protect.
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Max-Age': '86400',
+  };
+}
+
+export function json(
+  data: unknown,
+  status = 200,
+  extra: Record<string, string> = {}
+): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'X-Content-Type-Options': 'nosniff',
+      ...corsHeaders(),
+      ...extra,
+    },
+  });
+}
+
+function html(markup: string): Response {
+  return new Response(markup, {
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'same-origin',
+      'X-Frame-Options': 'DENY',
+      'Content-Security-Policy':
+        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    },
+  });
+}
+
+function withSecurityHeaders(res: Response): Response {
+  const headers = new Headers(res.headers);
+  headers.set('X-Content-Type-Options', 'nosniff');
+  headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  headers.set('X-Frame-Options', 'SAMEORIGIN');
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}

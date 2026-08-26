@@ -11,7 +11,10 @@
   --emerald: #10b981;
   --emerald-glow: rgba(16, 185, 129, 0.15);
   --amber: #f59e0b;
+  --amber-glow: rgba(245, 158, 11, 0.15);
   --rose: #f43f5e;
+  --rose-glow: rgba(244, 63, 94, 0.15);
+  --blue: #3b82f6;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
@@ -55,7 +58,7 @@ button {
 
 /* App Container */
 .container {
-  max-width: 1080px;
+  max-width: 1100px;
   margin: 0 auto;
   padding: 32px 20px 80px 20px;
 }
@@ -63,7 +66,7 @@ button {
 /* Header */
 header {
   text-align: center;
-  margin-bottom: 36px;
+  margin-bottom: 28px;
 }
 
 .brand-badge {
@@ -77,7 +80,7 @@ header {
   font-size: 12px;
   font-weight: 600;
   color: var(--cyan);
-  margin-bottom: 16px;
+  margin-bottom: 14px;
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }
@@ -95,9 +98,43 @@ header {
 
 .hero-subtitle {
   color: var(--text-muted);
-  font-size: 16px;
-  max-width: 620px;
-  margin: 0 auto;
+  font-size: 15.5px;
+  max-width: 680px;
+  margin: 0 auto 20px auto;
+}
+
+/* Domain Tabs Bar */
+.domain-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.domain-btn {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+
+.domain-btn:hover {
+  background: #1e293b;
+  color: #fff;
+  border-color: #475569;
+}
+
+.domain-btn.active {
+  background: rgba(6, 182, 212, 0.15);
+  color: var(--cyan);
+  border-color: var(--cyan);
+  font-weight: 600;
 }
 
 /* Search Box */
@@ -164,23 +201,23 @@ header {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  margin-bottom: 36px;
+  margin-bottom: 32px;
 }
 
 .chips-label {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11.5px;
+  font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
 }
 
 .chip {
   background: var(--bg-surface);
   border: 1px solid var(--border);
   color: var(--text-muted);
-  font-size: 12.5px;
-  padding: 6px 12px;
+  font-size: 12px;
+  padding: 5px 12px;
   border-radius: 20px;
   transition: all 0.15s;
   font-family: var(--font-mono);
@@ -217,6 +254,15 @@ header {
   border-bottom: 1px solid var(--border);
   padding-bottom: 18px;
   margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.header-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
 }
 
 .error-badge {
@@ -225,11 +271,35 @@ header {
   border: 1px solid rgba(244, 63, 94, 0.3);
   color: var(--rose);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   padding: 3px 8px;
   border-radius: var(--radius-sm);
-  margin-bottom: 8px;
+}
+
+.badge-sev {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.sev-p1 { background: rgba(244, 63, 94, 0.2); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.4); }
+.sev-p2 { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+.sev-p3 { background: rgba(6, 182, 212, 0.2); color: #38bdf8; border: 1px solid rgba(6, 182, 212, 0.4); }
+.sev-p4 { background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid #334155; }
+
+.badge-domain {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
 }
 
 .result-title {
@@ -238,12 +308,38 @@ header {
   color: #fff;
 }
 
+/* Action Bar in Header */
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.escalate-btn {
+  background: #1e293b;
+  color: #e2e8f0;
+  border: 1px solid var(--border);
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+}
+
+.escalate-btn:hover {
+  background: #334155;
+  color: #fff;
+}
+
 /* Primary Diagnostic Command Terminal */
 .terminal-block {
   background: #060910;
   border: 1px solid #1e293b;
   border-radius: var(--radius-md);
-  margin: 18px 0 24px 0;
+  margin: 14px 0 24px 0;
   overflow: hidden;
 }
 
@@ -308,21 +404,25 @@ header {
   border: 1px solid var(--emerald);
 }
 
-/* Triage Steps */
+/* Section titles */
 .section-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   color: #e2e8f0;
   text-transform: uppercase;
   letter-spacing: 0.6px;
   margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
+/* Triage Steps */
 .steps-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-bottom: 24px;
+  margin-bottom: 26px;
 }
 
 .step-card {
@@ -376,6 +476,53 @@ header {
   color: var(--text-muted);
 }
 
+/* Contingencies (Decision Trees / If Issues Persist) */
+.contingency-container {
+  background: #0d1527;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: var(--radius-md);
+  padding: 18px;
+  margin-bottom: 24px;
+}
+
+.contingency-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.contingency-item {
+  background: #131d33;
+  border-left: 3px solid var(--amber);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: 12px 16px;
+}
+
+.contingency-condition {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fbbf24;
+  margin-bottom: 4px;
+}
+
+.contingency-action {
+  font-size: 13px;
+  color: #cbd5e1;
+  margin-bottom: 6px;
+}
+
+/* Prevention SOP */
+.sop-box {
+  background: #0c1a2e;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-left: 4px solid var(--emerald);
+  padding: 14px 18px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: #cbd5e1;
+  margin-bottom: 22px;
+}
+
 /* Root cause / Explanation */
 .explanation-box {
   background: #0f172a;
@@ -384,7 +531,7 @@ header {
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   font-size: 13.5px;
   color: #cbd5e1;
-  margin-bottom: 20px;
+  margin-bottom: 22px;
 }
 
 /* Telemetry Footer */
@@ -403,6 +550,7 @@ header {
 .telemetry-tags {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .tag-badge {

@@ -1,23 +1,22 @@
-// ============================================================
-// ErrorLens Worker Types & Bindings
-// ============================================================
-
 export interface Env {
-  // Cloudflare Bindings
   DB: D1Database;
+  AI?: Ai;
   VECTOR_INDEX?: VectorizeIndex;
-  AI?: any; // Cloudflare Workers AI
-  KV?: KVNamespace;
   ASSETS?: Fetcher;
 
-  // Environment Secrets & Config
-  GEMINI_API_KEY?: string;
-  GEMINI_MODEL?: string;       // Default: 'gemini-2.5-flash-lite'
-  FALLBACK_MODEL?: string;     // Default: '@cf/meta/llama-3.1-8b-instruct'
-  MAX_RPM_PER_IP?: string | number;
-  MAX_RPD_PER_IP?: string | number;
-  CACHE_TTL_SECONDS?: string | number;
   ENVIRONMENT?: string;
+  GEMINI_MODEL?: string;
+  FALLBACK_MODEL?: string;
+  EMBEDDING_MODEL?: string;
+  MAX_RPM_PER_IP?: string;
+  MAX_RPD_PER_IP?: string;
+  CACHE_TTL_SECONDS?: string;
+  LOG_RETENTION_DAYS?: string;
+
+  // Secrets. All three are set with `wrangler secret put`.
+  GEMINI_API_KEY?: string;
+  ADMIN_TOKEN?: string;
+  IP_HASH_SALT?: string;
 }
 
 export interface TriageStep {
@@ -27,7 +26,8 @@ export interface TriageStep {
   expected?: string;
 }
 
-export interface Runbook {
+/** A runbook row exactly as D1 stores it: JSON columns are still strings. */
+export interface RunbookRow {
   id: number;
   slug: string;
   category: string;
@@ -36,50 +36,92 @@ export interface Runbook {
   summary: string;
   root_cause: string;
   diagnostic_command: string;
-  solution_steps: string; // JSON string in DB
-  tags: string;           // JSON string in DB
-  source_url?: string;
+  solution_steps: string;
+  tags: string;
+  source_url: string | null;
+  hit_count: number;
+  verified_at: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export interface ParsedRunbook extends Omit<Runbook, 'solution_steps' | 'tags'> {
+export interface Runbook extends Omit<RunbookRow, 'solution_steps' | 'tags'> {
   solution_steps: TriageStep[];
   tags: string[];
 }
 
-export interface TroubleshootRequest {
-  query: string;
-  category?: string;
-  stream?: boolean;
+export type SearchStrategy = 'fts' | 'vector' | 'hybrid' | 'cache' | 'none';
+
+export interface RagMatch {
+  runbook: Runbook;
+  score: number;
+  matchType: 'fts' | 'vector' | 'hybrid';
 }
+
+export interface RagResult {
+  matches: RagMatch[];
+  strategy: SearchStrategy;
+  /** Vector dimensions queried, for the free-tier budget meter. 0 when the
+   *  dense half did not run. */
+  dimsQueried: number;
+}
+
+export interface ContingencyOption {
+  condition: string;
+  action: string;
+  command?: string;
+}
+
+export type IncidentDomain =
+  | 'cloud_edge'
+  | 'networking_dns'
+  | 'linux_sysadmin'
+  | 'windows_m365'
+  | 'containers_k8s'
+  | 'database_sql'
+  | 'observability_app'
+  | 'general_systems';
+
+export type IncidentSeverity = 'P1_CRITICAL' | 'P2_HIGH' | 'P3_MEDIUM' | 'P4_LOW';
 
 export interface TroubleshootResponse {
   query: string;
   error_code: string;
   title: string;
+  domain: IncidentDomain;
+  severity: IncidentSeverity;
   matched_runbook: {
     id: number;
+    slug: string;
     title: string;
     error_code: string;
     category: string;
-    source_url?: string;
+    source_url: string | null;
+    verified_at: string | null;
   } | null;
   diagnostic_command: string;
   root_cause: string;
   steps: TriageStep[];
+  contingencies: ContingencyOption[];
+  prevention_sop?: string;
+  escalation_ticket?: string;
   detailed_explanation: string;
   verified_sources: string[];
+  /** True when the steps came from a stored runbook rather than being written
+   *  by a model. The UI uses this to mark generated commands as unverified. */
+  grounded: boolean;
   meta: {
     from_cache: boolean;
     duration_ms: number;
     model: string;
-    search_strategy: 'fts' | 'vector' | 'hybrid' | 'cache' | 'generative_fallback';
+    search_strategy: SearchStrategy;
   };
 }
 
-export interface RAGMatch {
-  runbook: ParsedRunbook;
-  score: number;
-  match_type: 'fts' | 'vector' | 'hybrid';
+export interface GenerationResult {
+  response: TroubleshootResponse;
+  model: string;
+  /** Rough Workers AI neuron cost, for the budget meter. 0 for Gemini. */
+  neurons: number;
+  provider: 'gemini' | 'workers-ai' | 'catalog';
 }

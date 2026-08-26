@@ -1,110 +1,98 @@
-// ============================================================
-// ErrorLens Hybrid RAG Retrieval Engine
-// Combines D1 FTS5 (Lexical BM25) + Vectorize (Dense Semantic)
-// with Reciprocal Rank Fusion (RRF)
-// ============================================================
+import type { Env, RagMatch, RagResult, Runbook } from '../types';
+import { getRunbooksByIds, searchRunbooks } from '../storage/d1';
+import { EMBEDDING_DIMS, embedText } from './embeddings';
 
-import type { Env, ParsedRunbook, RAGMatch } from '../types';
-import { searchRunbooksFTS } from '../storage/d1';
+/**
+ * Reciprocal Rank Fusion smoothing constant. 60 is the value from Cormack et
+ * al. (2009) and is what most hybrid-search implementations use; it flattens
+ * the contribution of the top few ranks so one engine cannot dominate purely
+ * by being confident.
+ */
+const RRF_K = 60;
 
-const RRF_K = 60; // Standard RRF smoothing constant
+const FTS_DEPTH = 5;
+const VECTOR_DEPTH = 5;
 
-export async function retrieveRelevantRunbooks(
-  env: Env,
-  query: string,
-  limit = 3
-): Promise<{ matches: RAGMatch[]; strategy: 'fts' | 'vector' | 'hybrid' }> {
-  // 1. Lexical BM25 Search via D1 FTS5
-  const ftsResults = await searchRunbooksFTS(env.DB, query, 5);
+/**
+ * Hybrid retrieval: lexical BM25 over FTS5, dense cosine over Vectorize, fused
+ * by rank rather than by score.
+ *
+ * Rank fusion matters here because the two engines produce incomparable
+ * numbers -- bm25() returns unbounded negatives, cosine returns 0..1. Fusing
+ * raw scores would need per-engine calibration that drifts as the corpus
+ * grows; fusing ranks does not.
+ *
+ * Lexical is the important half for this domain. Error identifiers like
+ * `Exit Code 137` and `ERR_OSSL_EVP_UNSUPPORTED` are close to meaningless to a
+ * sentence encoder but are exactly what BM25 is good at. The dense half earns
+ * its place on the paraphrases -- "my container got killed for using too much
+ * RAM" retrieves the OOM runbook without sharing a single term with it.
+ */
+export async function retrieve(env: Env, query: string, limit = 3): Promise<RagResult> {
+  const lexical = await searchRunbooks(env.DB, query, FTS_DEPTH);
 
-  // 2. Semantic Vector Search via Cloudflare Vectorize (if bindings are active)
-  let vectorResults: ParsedRunbook[] = [];
-  let vectorEnabled = false;
+  let dense: Runbook[] = [];
+  let dimsQueried = 0;
 
   if (env.AI && env.VECTOR_INDEX) {
-    try {
-      // Generate 384-dimensional dense embedding via Workers AI BGE-small
-      const embeddingRes = await env.AI.run('@cf/baai/bge-small-en-v1.5', {
-        text: [query],
-      });
+    const embedded = await embedText(env, query);
+    if (embedded) {
+      try {
+        const hits = await env.VECTOR_INDEX.query(embedded.vector, { topK: VECTOR_DEPTH });
+        dimsQueried = EMBEDDING_DIMS;
 
-      const vector = embeddingRes?.data?.[0];
+        const ids = (hits?.matches ?? [])
+          .map((m) => Number.parseInt(m.id, 10))
+          .filter((n) => Number.isFinite(n));
 
-      if (vector && Array.isArray(vector)) {
-        const matches = await env.VECTOR_INDEX.query(vector, {
-          topK: 5,
-          returnMetadata: 'indexed',
-        });
-
-        if (matches?.matches && matches.matches.length > 0) {
-          vectorEnabled = true;
-          const ids = matches.matches.map(m => parseInt(m.id, 10)).filter(n => !isNaN(n));
-
-          if (ids.length > 0) {
-            const placeholders = ids.map(() => '?').join(',');
-            const { results } = await env.DB.prepare(
-              `SELECT * FROM runbooks WHERE id IN (${placeholders})`
-            ).bind(...ids).all<any>();
-
-            const idMap = new Map((results || []).map(r => [r.id, r]));
-            vectorResults = ids
-              .map(id => idMap.get(id))
-              .filter(Boolean)
-              .map(r => ({
-                ...r,
-                solution_steps: JSON.parse(r.solution_steps || '[]'),
-                tags: JSON.parse(r.tags || '[]'),
-              }));
-          }
+        if (ids.length > 0) {
+          const byId = new Map(
+            (await getRunbooksByIds(env.DB, ids)).map((r) => [r.id, r] as const)
+          );
+          // Preserve Vectorize's ordering -- the SQL IN clause does not.
+          dense = ids.map((id) => byId.get(id)).filter((r): r is Runbook => Boolean(r));
         }
+      } catch (err) {
+        console.warn('[rag] vector search failed, using lexical only:', err);
       }
-    } catch (vectorErr) {
-      console.warn('[Vector Search Warning, falling back to FTS5]:', vectorErr);
     }
   }
 
-  // 3. Reciprocal Rank Fusion (RRF)
-  const scores = new Map<number, { runbook: ParsedRunbook; score: number; matchType: 'fts' | 'vector' | 'hybrid' }>();
+  const fused = fuse(lexical, dense);
+  const matches = fused.slice(0, limit);
 
-  // Add FTS ranks
-  ftsResults.forEach((runbook, rank) => {
-    const rrf = 1 / (RRF_K + rank + 1);
+  return { matches, strategy: strategyFor(lexical, dense), dimsQueried };
+}
+
+/** Exported for tests: the fusion step is pure and worth pinning down. */
+export function fuse(lexical: Runbook[], dense: Runbook[]): RagMatch[] {
+  const scores = new Map<number, RagMatch>();
+
+  lexical.forEach((runbook, rank) => {
     scores.set(runbook.id, {
       runbook,
-      score: rrf,
+      score: 1 / (RRF_K + rank + 1),
       matchType: 'fts',
     });
   });
 
-  // Merge Vector ranks
-  vectorResults.forEach((runbook, rank) => {
-    const rrf = 1 / (RRF_K + rank + 1);
+  dense.forEach((runbook, rank) => {
+    const contribution = 1 / (RRF_K + rank + 1);
     const existing = scores.get(runbook.id);
     if (existing) {
-      existing.score += rrf;
+      existing.score += contribution;
       existing.matchType = 'hybrid';
     } else {
-      scores.set(runbook.id, {
-        runbook,
-        score: rrf,
-        matchType: 'vector',
-      });
+      scores.set(runbook.id, { runbook, score: contribution, matchType: 'vector' });
     }
   });
 
-  // Sort by combined RRF score descending
-  const sorted = Array.from(scores.values()).sort((a, b) => b.score - a.score);
-  const topMatches: RAGMatch[] = sorted.slice(0, limit).map(m => ({
-    runbook: m.runbook,
-    score: m.score,
-    match_type: m.matchType,
-  }));
+  return [...scores.values()].sort((a, b) => b.score - a.score);
+}
 
-  const strategy = vectorEnabled && ftsResults.length > 0
-    ? 'hybrid'
-    : vectorEnabled
-    ? 'vector'
-    : 'fts';
-
-  return { matches: topMatches, strategy };
+function strategyFor(lexical: Runbook[], dense: Runbook[]) {
+  if (lexical.length > 0 && dense.length > 0) return 'hybrid' as const;
+  if (dense.length > 0) return 'vector' as const;
+  if (lexical.length > 0) return 'fts' as const;
+  return 'none' as const;
 }

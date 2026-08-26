@@ -2,44 +2,64 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "errorlens-worker",
   "main": "src/index.ts",
-  "compatibility_date": "2025-02-24",
-  "compatibility_flags": [
-    "nodejs_compat"
-  ],
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Fork note: these IDs point at the author's account. Create your own with
+  //   wrangler d1 create errorlens-db
+  //   wrangler vectorize create errorlens-vectors --dimensions=384 --metric=cosine
+  // and replace them. Resource IDs are not secrets, but they are not yours.
+  "account_id": "7c29404536bcb67d9d82af07213f8ad1",
+
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "errorlens-db",
-      "database_id": "errorlens-db-placeholder",
+      "database_id": "ff23e3f2-0c0f-49a2-9f1c-43012a06e5f5",
       "migrations_dir": "migrations"
     }
   ],
+
+  // 384 dimensions to match @cf/baai/bge-small-en-v1.5. Creating the index at
+  // any other width makes every upsert fail.
   "vectorize": [
     {
       "binding": "VECTOR_INDEX",
       "index_name": "errorlens-vectors"
     }
   ],
-  "ai": {
-    "binding": "AI"
-  },
-  "kv_namespaces": [
-    {
-      "binding": "KV",
-      "id": "errorlens-kv-placeholder"
-    }
-  ],
+
+  "ai": { "binding": "AI" },
+
+  // No KV binding on purpose. The free plan allows 1,000 KV writes/day but
+  // 100,000 D1 rows written/day, and every hot path here writes (rate-limit
+  // counter, request log, cache fill). D1 is the only store.
+
   "assets": {
     "directory": "../frontend/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application"
   },
+
+  // Nightly cleanup: expired cache rows, stale rate-limit buckets, logs past
+  // the retention window.
+  "triggers": { "crons": ["17 3 * * *"] },
+
+  "observability": { "enabled": true },
+
   "vars": {
-    "ENVIRONMENT": "development",
-    "GEMINI_MODEL": "gemini-2.5-flash-lite",
+    "ENVIRONMENT": "production",
+    "GEMINI_MODEL": "gemini-3.5-flash-lite",
     "FALLBACK_MODEL": "@cf/meta/llama-3.1-8b-instruct",
+    "EMBEDDING_MODEL": "@cf/baai/bge-small-en-v1.5",
     "MAX_RPM_PER_IP": "5",
     "MAX_RPD_PER_IP": "30",
-    "CACHE_TTL_SECONDS": "604800"
+    "CACHE_TTL_SECONDS": "604800",
+    "LOG_RETENTION_DAYS": "30"
   }
+
+  // Secrets, set with `wrangler secret put <NAME>`:
+  //   GEMINI_API_KEY  - Google AI Studio, free tier
+  //   ADMIN_TOKEN     - gates /api/admin/*; without it the admin API returns 503
+  //   IP_HASH_SALT    - salts client IPs before they are stored
 }
