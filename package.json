@@ -5,21 +5,27 @@
   "type": "module",
   "description": "Hybrid-retrieval troubleshooting engine for DevOps and cloud errors, running entirely on Cloudflare's free tier.",
   "license": "MIT",
-  "engines": { "node": ">=20" },
-  "workspaces": ["worker", "frontend"],
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "worker",
+    "frontend"
+  ],
   "scripts": {
     "dev": "npm run dev --workspace=worker",
     "dev:frontend": "npm run dev --workspace=frontend",
     "build": "npm run build --workspace=frontend",
     "typecheck": "npm run typecheck --workspaces",
-    "test": "npm run test --workspace=worker",
+    "test": "npm run test --workspace=worker && npm run test:datasets",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "runbooks:validate": "node datasets/scripts/validate.js",
     "runbooks:build": "node datasets/scripts/build-migration.js",
-    "verify": "npm run lint && npm run typecheck && npm test && npm run runbooks:validate && npm run build"
+    "verify": "npm run lint && npm run typecheck && npm test && npm run runbooks:validate && npm run build",
+    "test:datasets": "node --test \"datasets/scripts/**/*.test.js\""
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
