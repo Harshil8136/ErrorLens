@@ -1,0 +1,20 @@
+{
+  "name": "errorlens-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "preact": "^10.25.4"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.9.5",
+    "typescript": "^5.7.3",
+    "vite": "^6.2.0"
+  }
+}

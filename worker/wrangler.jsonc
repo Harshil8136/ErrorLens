@@ -1,0 +1,45 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "errorlens-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-02-24",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "errorlens-db",
+      "database_id": "errorlens-db-placeholder",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vectorize": [
+    {
+      "binding": "VECTOR_INDEX",
+      "index_name": "errorlens-vectors"
+    }
+  ],
+  "ai": {
+    "binding": "AI"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "KV",
+      "id": "errorlens-kv-placeholder"
+    }
+  ],
+  "assets": {
+    "directory": "../frontend/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "vars": {
+    "ENVIRONMENT": "development",
+    "GEMINI_MODEL": "gemini-2.5-flash-lite",
+    "FALLBACK_MODEL": "@cf/meta/llama-3.1-8b-instruct",
+    "MAX_RPM_PER_IP": "5",
+    "MAX_RPD_PER_IP": "30",
+    "CACHE_TTL_SECONDS": "604800"
+  }
+}

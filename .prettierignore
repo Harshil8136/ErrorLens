@@ -1,0 +1,4 @@
+package-lock.json
+frontend/dist
+worker/migrations
+datasets/generated
