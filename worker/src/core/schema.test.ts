@@ -15,7 +15,7 @@ describe('validateSteps', () => {
       { step: 1, action: 'Check the exit code', command: 'docker inspect x', expected: 'OOMKilled' },
     ]);
     expect(steps).toHaveLength(1);
-    expect(steps[0]).toMatchObject({
+    expect(steps[0]!).toMatchObject({
       step: 1,
       action: 'Check the exit code',
       command: 'docker inspect x',
@@ -43,8 +43,8 @@ describe('validateSteps', () => {
 
   it('omits command and expected when they are blank rather than emitting empty strings', () => {
     const steps = validateSteps([{ step: 1, action: 'look', command: '  ', expected: '' }]);
-    expect(steps[0].command).toBeUndefined();
-    expect(steps[0].expected).toBeUndefined();
+    expect(steps[0]!.command).toBeUndefined();
+    expect(steps[0]!.expected).toBeUndefined();
   });
 
   it('returns an empty array for non-array input', () => {
@@ -104,7 +104,7 @@ describe('validateContingencies', () => {
 
   it('keeps an optional command', () => {
     const out = validateContingencies([{ condition: 'if x', action: 'do y', command: 'ls -la' }]);
-    expect(out[0].command).toBe('ls -la');
+    expect(out[0]!.command).toBe('ls -la');
   });
 });
 

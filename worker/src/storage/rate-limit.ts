@@ -65,9 +65,9 @@ export async function checkRateLimit(
       ).bind(ipHash, dayId),
     ]);
 
-    const prevHits = prevRow.results?.[0]?.hits ?? 0;
-    const currHits = currRow.results?.[0]?.hits ?? 1;
-    const dayCount = dayRow.results?.[0]?.hits ?? 1;
+    const prevHits = prevRow?.results?.[0]?.hits ?? 0;
+    const currHits = currRow?.results?.[0]?.hits ?? 1;
+    const dayCount = dayRow?.results?.[0]?.hits ?? 1;
 
     const carryOver = prevHits * ((MINUTE - elapsedInMinute) / MINUTE);
     const minuteRate = carryOver + currHits;

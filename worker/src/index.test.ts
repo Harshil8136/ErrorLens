@@ -200,8 +200,8 @@ describe('admin API', () => {
     };
     expect(body.totals).toBeDefined();
     // Budget limits come from the same constants the README quotes.
-    expect(body.budget.worker_requests.limit).toBe(100_000);
-    expect(body.budget.gemini_requests.limit).toBe(1_000);
+    expect(body.budget.worker_requests!.limit).toBe(100_000);
+    expect(body.budget.gemini_requests!.limit).toBe(1_000);
   });
 
   it('surfaces unmatched queries as knowledge gaps', async () => {
