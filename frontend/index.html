@@ -1,14 +1,44 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ErrorLens &mdash; Deterministic DevOps & Cloud Troubleshooting RAG</title>
-    <meta name="description" content="Instant, battle-tested diagnostic workflows and copy-paste remediation for Kubernetes, Docker, Linux, and Cloud infrastructure errors." />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <title>ErrorLens — diagnose and fix infrastructure errors</title>
+    <meta
+      name="description"
+      content="Paste an error code or stack trace and get the command that confirms the cause, the steps that fix it, and what to try when those fail. Hybrid BM25 + vector retrieval over reviewed runbooks, running on Cloudflare's free tier."
+    />
+    <meta name="theme-color" content="#0a0e17" />
+    <link rel="canonical" href="https://errorlens-rag.workers.dev/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://errorlens-rag.workers.dev/" />
+    <meta property="og:title" content="ErrorLens — diagnose and fix infrastructure errors" />
+    <meta
+      property="og:description"
+      content="Hybrid retrieval over reviewed runbooks. The command that confirms the cause, the steps that fix it, and what to try when those fail."
+    />
+    <meta property="og:image" content="https://errorlens-rag.workers.dev/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#9889;</text></svg>"
+    />
+
+    <!-- Fira Code is only used for commands and codes. Preconnecting keeps the
+         handshake off the critical path; the stack falls back to the system
+         monospace if Google Fonts is blocked or slow. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
     <div id="app"></div>
