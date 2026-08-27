@@ -24,6 +24,17 @@ export interface Env {
   MAX_RPD_PER_IP?: string;
   CACHE_TTL_SECONDS?: string;
   LOG_RETENTION_DAYS?: string;
+  /** Hard daily ceilings. Below the free-tier limits on purpose -- see core/budget.ts. */
+  MAX_GEMINI_CALLS_PER_DAY?: string;
+  MAX_NEURONS_PER_DAY?: string;
+  /** Cloudflare Turnstile. When TURNSTILE_SECRET_KEY is set, /api/troubleshoot
+   *  requires a valid token; when it is unset the check is skipped entirely so
+   *  local development and self-hosted forks work without one. */
+  TURNSTILE_SITE_KEY?: string;
+  TURNSTILE_SECRET_KEY?: string;
+  /** Comma-separated frontend hostnames siteverify results must match.
+   *  Never include localhost in a production value. */
+  TURNSTILE_HOSTNAMES?: string;
 
   // Secrets. All three are set with `wrangler secret put`.
   GEMINI_API_KEY?: string;

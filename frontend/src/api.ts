@@ -20,6 +20,7 @@ interface ErrorBody {
 
 export async function troubleshoot(
   query: string,
+  turnstileToken: string | null,
   signal?: AbortSignal
 ): Promise<TroubleshootResponse> {
   let res: Response;
@@ -27,7 +28,12 @@ export async function troubleshoot(
     res = await fetch('/api/troubleshoot', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({
+        query,
+        // Named to match Turnstile's own convention so the field is
+        // recognisable to anyone who has wired this up before.
+        ...(turnstileToken ? { 'cf-turnstile-response': turnstileToken } : {}),
+      }),
       signal,
     });
   } catch (err) {

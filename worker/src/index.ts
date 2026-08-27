@@ -7,6 +7,7 @@ import { clamp, getRunbookBySlug, incrementHitCount, listRunbooks } from './stor
 import { purgeLogs, writeLog, type LogEntry } from './storage/logs';
 import { recordUsage } from './storage/usage';
 import { hashIp } from './core/security';
+import { verifyTurnstile } from './core/turnstile';
 import { handleAdmin } from './admin/api';
 import { renderAdminPanel } from './admin/panel';
 
@@ -54,6 +55,14 @@ export default {
             gemini_key: Boolean(env.GEMINI_API_KEY),
             admin_token: Boolean(env.ADMIN_TOKEN),
           },
+        });
+      }
+
+      // Lets the frontend discover the site key at runtime instead of baking
+      // it in at build time, so one build works across deployments.
+      if (path === '/api/config' && request.method === 'GET') {
+        return json({ turnstile_site_key: env.TURNSTILE_SITE_KEY ?? null }, 200, {
+          'Cache-Control': 'public, max-age=300',
         });
       }
 
@@ -165,9 +174,9 @@ async function handleTroubleshoot(
     return json({ error: 'Request body too large' }, 413);
   }
 
-  let body: { query?: unknown };
+  let body: { query?: unknown; 'cf-turnstile-response'?: unknown };
   try {
-    body = (await request.json()) as { query?: unknown };
+    body = (await request.json()) as { query?: unknown; 'cf-turnstile-response'?: unknown };
   } catch {
     log({ status: 400, durationMs: Date.now() - started, ipHash, country, errorKind: 'bad_json' });
     return json({ error: 'Request body must be valid JSON' }, 400);
@@ -187,6 +196,29 @@ async function handleTroubleshoot(
       errorKind: 'query_too_long',
     });
     return json({ error: `Query must be ${MAX_QUERY_CHARS} characters or fewer` }, 400);
+  }
+
+  // Checked after cheap validation but before retrieval or generation, so a
+  // failed challenge never reaches a paid tier.
+  const challenge = await verifyTurnstile(env, body['cf-turnstile-response'], clientIp);
+  if (!challenge.ok) {
+    log({
+      status: 403,
+      durationMs: Date.now() - started,
+      ipHash,
+      country,
+      errorKind: `turnstile_${challenge.reason}`,
+    });
+    return json(
+      {
+        error: 'Verification required',
+        message:
+          challenge.reason === 'missing'
+            ? 'Complete the verification check and try again.'
+            : 'Verification failed. Refresh the page and try again.',
+      },
+      403
+    );
   }
 
   const cached = await readCache(env, query);

@@ -2,6 +2,7 @@ import { useRef, useState } from 'preact/hooks';
 import type { TroubleshootResponse } from '../../shared/api';
 import { ApiError, troubleshoot } from './api';
 import { ResultCard } from './components/ResultCard';
+import { useTurnstile } from './useTurnstile';
 
 const EXAMPLES = [
   'Docker container exited with code 137',
@@ -19,6 +20,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const inFlight = useRef<AbortController | null>(null);
+  const turnstile = useTurnstile();
 
   const run = async (text: string) => {
     const q = text.trim();
@@ -35,12 +37,15 @@ export function App() {
     setError(null);
 
     try {
-      setResult(await troubleshoot(q, controller.signal));
+      setResult(await troubleshoot(q, turnstile.getToken(), controller.signal));
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       setResult(null);
       setError(err instanceof ApiError ? err.message : 'Something went wrong. Try again.');
     } finally {
+      // Turnstile tokens are redeemed exactly once, so the widget has to be
+      // reset before the next attempt regardless of how this one ended.
+      turnstile.reset();
       if (inFlight.current === controller) {
         inFlight.current = null;
         setBusy(false);
@@ -82,6 +87,13 @@ export function App() {
           {busy ? 'Diagnosing' : 'Diagnose'}
         </button>
       </form>
+
+      {turnstile.siteKey && (
+        <div class="turnstile">
+          <div ref={turnstile.containerRef} />
+          {turnstile.error && <p class="turnstile-error">{turnstile.error}</p>}
+        </div>
+      )}
 
       <div class="examples">
         <span class="examples-label">Try:</span>

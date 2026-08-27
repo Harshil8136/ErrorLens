@@ -56,10 +56,26 @@
     "MAX_RPD_PER_IP": "30",
     "CACHE_TTL_SECONDS": "604800",
     "LOG_RETENTION_DAYS": "30",
+
+    // Hard ceilings on the two paid-if-exceeded tiers, set below the free
+    // limits (1000 Gemini calls/day, 10000 neurons/day) so a burst cannot
+    // cross them. Past either ceiling the request drops to the catalog.
+    "MAX_GEMINI_CALLS_PER_DAY": "900",
+    "MAX_NEURONS_PER_DAY": "9000",
+
+    // Turnstile. Leave TURNSTILE_SITE_KEY empty to disable bot checks
+    // entirely; the frontend hides the widget and the Worker skips
+    // verification. Set both this and the TURNSTILE_SECRET_KEY secret to
+    // turn it on. TURNSTILE_HOSTNAMES must list the exact frontend
+    // hostnames siteverify should accept -- never include localhost here
+    // in a production deployment.
+    "TURNSTILE_SITE_KEY": "",
+    "TURNSTILE_HOSTNAMES": "",
   },
 
   // Secrets, set with `wrangler secret put <NAME>`:
-  //   GEMINI_API_KEY  - Google AI Studio, free tier
-  //   ADMIN_TOKEN     - gates /api/admin/*; without it the admin API returns 503
-  //   IP_HASH_SALT    - salts client IPs before they are stored
+  //   GEMINI_API_KEY        - Google AI Studio, free tier
+  //   ADMIN_TOKEN           - gates /api/admin/*; without it the admin API returns 503
+  //   IP_HASH_SALT          - salts client IPs before they are stored
+  //   TURNSTILE_SECRET_KEY  - optional; when set, /api/troubleshoot requires a token
 }

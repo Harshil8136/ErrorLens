@@ -19,6 +19,7 @@ import {
   validateSeverity,
 } from './schema';
 import { estimateNeurons } from '../storage/usage';
+import { getBudget, recordSpend } from './budget';
 
 const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash-lite';
 const DEFAULT_FALLBACK_MODEL = '@cf/meta/llama-3.1-8b-instruct';
@@ -49,14 +50,25 @@ export async function generate(
   const system = buildSystemPrompt();
   const user = buildUserPrompt(query, matches);
 
-  if (env.GEMINI_API_KEY) {
+  // Both paid tiers are gated on today's consumption. Once either ceiling is
+  // reached the request silently drops to the next tier -- the user still gets
+  // an answer, it just comes from the catalog instead of a model.
+  const budget = await getBudget(env);
+
+  if (env.GEMINI_API_KEY && budget.geminiAllowed) {
     const result = await tryGemini(env, query, system, user, top);
-    if (result) return result;
+    if (result) {
+      recordSpend('gemini', 0);
+      return result;
+    }
   }
 
-  if (env.AI) {
+  if (env.AI && budget.workersAiAllowed) {
     const result = await tryWorkersAi(env, query, system, user, top);
-    if (result) return result;
+    if (result) {
+      recordSpend('workers-ai', result.neurons);
+      return result;
+    }
   }
 
   return {

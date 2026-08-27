@@ -104,36 +104,47 @@ npx wrangler d1 migrations apply errorlens-db --local
 
 ## Deploying
 
-The IDs in `worker/wrangler.jsonc` point at my account. Create your own:
+Full walkthrough with every command and where each key comes from:
+**[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**. The short version:
 
 ```bash
 npx wrangler d1 create errorlens-db
 npx wrangler vectorize create errorlens-vectors --dimensions=384 --metric=cosine
-```
-
-Put the returned `database_id` into `wrangler.jsonc`, then:
-
-```bash
-npx wrangler d1 migrations apply errorlens-db --remote
+# put the printed IDs into worker/wrangler.jsonc
 
 npx wrangler secret put GEMINI_API_KEY   # aistudio.google.com/apikey
 npx wrangler secret put ADMIN_TOKEN      # openssl rand -hex 32
 npx wrangler secret put IP_HASH_SALT     # openssl rand -hex 32
 
-npm run build                 # frontend/dist, served by the Worker
-npm run deploy --workspace=worker
+npx wrangler d1 migrations apply errorlens-db --remote
+npm run build && npm run deploy --workspace=worker
+
+curl -X POST https://<worker>/api/admin/reindex -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
-Then populate the vector index, which is a separate step because embedding the
-whole corpus costs far more than the 10ms CPU a single request gets:
+That last call is the one people forget. It embeds the runbooks into Vectorize;
+without it the dense half of the search has nothing to search.
 
-```bash
-curl -X POST https://<your-worker>/api/admin/reindex \
-  -H "Authorization: Bearer $ADMIN_TOKEN"
-```
+## Keeping it free under abuse
 
-If `ADMIN_TOKEN` isn't set, the entire admin surface returns 503 rather than
-falling open.
+Three independent layers, because any one of them alone has a hole.
+
+**Per-IP limits** (5/minute, 30/day) stop a single scraper. They do not stop a
+distributed one — 34 addresses at 30/day each is enough to drain the Gemini
+quota.
+
+**A daily budget ceiling** is the backstop. Before either paid tier is called,
+the Worker checks today's consumption against a hard cap set at 90% of the free
+allowance. Past it, requests silently drop to the catalog: users still get an
+answer, it just comes from a stored runbook instead of a model. This is what
+makes "stays free" a property of the code rather than a hope.
+
+**Turnstile** is optional and off until you set a secret. With
+`TURNSTILE_SECRET_KEY` unset the check is skipped entirely, so forks and local
+development work without provisioning anything. With it set, verification is
+mandatory and fails closed — a network error, a non-2xx, or an unparseable body
+all reject. Three things are checked, not one: `success`, that the token was
+minted for this action, and that it came from an allowlisted hostname.
 
 ## Layout
 
@@ -176,8 +187,9 @@ Bundle, from `npm run build`:
 | JS    | 21.95 kB | 9.07 kB |
 | CSS   |  7.59 kB | 2.38 kB |
 
-Tests: 77 in the Worker (router, rate limiter, rank fusion, FTS query builder,
-output validators, admin auth) and 17 for the runbook parser. The Worker suite
+Tests: 97 in the Worker (router, rate limiter, rank fusion, FTS query builder,
+output validators, admin auth, Turnstile verification, budget ceilings) and 17
+for the runbook parser. The Worker suite
 runs inside `workerd` against a real D1 with the migrations applied, not mocks.
 
 Latency numbers are deliberately absent. There's a harness in `bench/` that
@@ -205,6 +217,7 @@ and committed, there's nothing here worth quoting.
 
 ## Reading further
 
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — every command, every key, in order
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — retrieval, fusion, caching, the request path
 - [docs/COST-MODEL.md](docs/COST-MODEL.md) — where the ceilings actually are
 - [docs/PRIVACY.md](docs/PRIVACY.md) — what gets logged
