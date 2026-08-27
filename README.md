@@ -186,9 +186,10 @@ and committed, there's nothing here worth quoting.
 
 ## Limitations
 
-- **The corpus is small.** Nine runbooks at the time of writing. Retrieval
-  quality scores well against it, but that says more about the size of the test
-  than the quality of the engine.
+- **The corpus is small.** Thirteen runbooks across seven categories at the time
+  of writing. Retrieval scores well against it, but on a corpus that size that
+  says more about the size of the test than the quality of the engine. This is
+  the main thing worth contributing to.
 - **English only.** The FTS5 tokenizer is configured for English stemming.
 - **No authentication on the public API.** It's rate limited by IP, which is a
   cost control, not a security boundary.

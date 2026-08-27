@@ -209,13 +209,19 @@ describe('admin API', () => {
   });
 
   it('surfaces unmatched queries as knowledge gaps', async () => {
-    await troubleshoot({ query: 'some totally unknown failure mode' });
+    // Deliberately alien terms. An earlier version of this test used
+    // "some totally unknown failure mode", which started matching once a
+    // runbook mentioning "validation failure" was added -- the test was
+    // asserting on the corpus, not on the gap-reporting behaviour.
+    const query = 'zxqv frobnicator quokka telemetry';
+    await troubleshoot({ query });
+
     const res = await SELF.fetch('https://errorlens.test/api/admin/gaps', {
       headers: { Authorization: 'Bearer test-admin-token' },
     });
 
     const body = (await res.json()) as { gaps: { query_text: string }[] };
-    expect(body.gaps.some((g) => g.query_text === 'some totally unknown failure mode')).toBe(true);
+    expect(body.gaps.some((g) => g.query_text === query)).toBe(true);
   });
 
   it('serves the admin panel with a restrictive CSP', async () => {

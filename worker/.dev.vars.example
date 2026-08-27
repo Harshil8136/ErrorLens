@@ -1,0 +1,17 @@
+# Copy to worker/.dev.vars and fill in. .dev.vars is gitignored.
+#
+# All three are optional for local development:
+#   - without GEMINI_API_KEY the app falls through to Workers AI, then to the
+#     local catalog, which is enough to develop against
+#   - without ADMIN_TOKEN the admin API returns 503 rather than falling open
+#   - without IP_HASH_SALT a development default is used; set a real one in
+#     production or the IP hashes are trivially reversible
+
+# Free key from https://aistudio.google.com/apikey
+GEMINI_API_KEY=
+
+# Gates /api/admin/*.  openssl rand -hex 32
+ADMIN_TOKEN=
+
+# Salts client IPs before they are stored.  openssl rand -hex 32
+IP_HASH_SALT=
