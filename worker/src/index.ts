@@ -61,9 +61,15 @@ export default {
       // Lets the frontend discover the site key at runtime instead of baking
       // it in at build time, so one build works across deployments.
       if (path === '/api/config' && request.method === 'GET') {
-        return json({ turnstile_site_key: env.TURNSTILE_SITE_KEY ?? null }, 200, {
-          'Cache-Control': 'public, max-age=300',
-        });
+        return json(
+          // `|| null` not `??` -- an unset wrangler var is an empty string,
+          // not undefined, and the frontend branches on null.
+          { turnstile_site_key: env.TURNSTILE_SITE_KEY || null },
+          200,
+          {
+            'Cache-Control': 'public, max-age=300',
+          }
+        );
       }
 
       if (path === '/api/runbooks' && request.method === 'GET') {
