@@ -1,0 +1,52 @@
+{
+  "$schema": "worker/node_modules/wrangler/config-schema.json",
+  "name": "errorlens-worker",
+  "main": "worker/src/index.ts",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "account_id": "7c29404536bcb67d9d82af07213f8ad1",
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "errorlens-db",
+      "database_id": "ff23e3f2-0c0f-49a2-9f1c-43012a06e5f5",
+      "migrations_dir": "worker/migrations"
+    }
+  ],
+
+  "vectorize": [
+    {
+      "binding": "VECTOR_INDEX",
+      "index_name": "errorlens-vectors"
+    }
+  ],
+
+  "ai": { "binding": "AI" },
+
+  "assets": {
+    "directory": "frontend/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+
+  "triggers": { "crons": ["17 3 * * *"] },
+
+  "observability": { "enabled": true },
+
+  "vars": {
+    "ENVIRONMENT": "production",
+    "GEMINI_MODEL": "gemini-3.5-flash-lite",
+    "FALLBACK_MODEL": "@cf/meta/llama-3.1-8b-instruct",
+    "EMBEDDING_MODEL": "@cf/baai/bge-small-en-v1.5",
+    "MAX_RPM_PER_IP": "5",
+    "MAX_RPD_PER_IP": "30",
+    "CACHE_TTL_SECONDS": "604800",
+    "LOG_RETENTION_DAYS": "30",
+    "MAX_GEMINI_CALLS_PER_DAY": "900",
+    "MAX_NEURONS_PER_DAY": "9000",
+    "TURNSTILE_SITE_KEY": "",
+    "TURNSTILE_HOSTNAMES": ""
+  }
+}

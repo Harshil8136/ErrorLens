@@ -17,6 +17,7 @@
     "dev": "npm run dev --workspace=worker",
     "dev:frontend": "npm run dev --workspace=frontend",
     "build": "npm run build --workspace=frontend",
+    "deploy": "wrangler deploy",
     "typecheck": "npm run typecheck --workspaces",
     "test": "npm run test --workspace=worker && npm run test:datasets",
     "lint": "eslint .",
