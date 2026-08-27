@@ -59,9 +59,36 @@ export async function retrieve(env: Env, query: string, limit = 3): Promise<RagR
   }
 
   const fused = fuse(lexical, dense);
-  const matches = fused.slice(0, limit);
+  const relevant = fused.filter((m) => isRelevantMatch(query, m.runbook));
+  const matches = relevant.slice(0, limit);
+  const strategy = matches.length > 0 ? strategyFor(lexical, dense) : 'none';
 
-  return { matches, strategy: strategyFor(lexical, dense), dimsQueried };
+  return { matches, strategy, dimsQueried };
+}
+
+/**
+ * Ensures a runbook is only treated as a match if the query actually targets it.
+ * This prevents common words like "code", "error", or "process" from dragging in
+ * completely unrelated runbooks (e.g. matching Docker OOM for Windows BSOD).
+ */
+export function isRelevantMatch(query: string, runbook: Runbook): boolean {
+  const q = query.toLowerCase();
+  const code = runbook.error_code.toLowerCase().trim();
+  const slug = runbook.slug.toLowerCase().trim();
+
+  // If query contains the exact error code (e.g. "137", "502", "1102", "crashloopbackoff", "53300")
+  if (code && q.includes(code)) return true;
+  if (slug && q.includes(slug)) return true;
+
+  // Check if at least 3 distinct meaningful words from the title are present in query
+  const titleWords = runbook.title
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 3 && !['with', 'from', 'this', 'that', 'error', 'code'].includes(w));
+
+  const hits = titleWords.filter((w) => q.includes(w));
+  return hits.length >= 3;
 }
 
 /** Exported for tests: the fusion step is pure and worth pinning down. */

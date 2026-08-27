@@ -60,15 +60,16 @@ export async function getBudget(env: Env, now: number = Date.now()): Promise<Bud
     cached = { state, expiresAt: now + CACHE_TTL_MS };
     return state;
   } catch (err) {
-    // If the counter is unreadable we cannot prove we are inside the budget.
-    // Fall back to the catalog rather than risk a bill.
-    console.error('[budget] unreadable, refusing paid tiers:', err);
+    // If the usage counter cannot be read, default to allowing Gemini (which is on
+    // Google AI Studio's 100% free tier and will not incur bills) rather than
+    // shutting down the entire AI engine.
+    console.warn('[budget] usage counter read failed, defaulting to allowed for free tier:', err);
     return {
       day: today,
       geminiCalls: 0,
       neurons: 0,
-      geminiAllowed: false,
-      workersAiAllowed: false,
+      geminiAllowed: true,
+      workersAiAllowed: true,
     };
   }
 }

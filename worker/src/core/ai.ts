@@ -240,7 +240,7 @@ function fromCatalog(query: string, top: Runbook | undefined): TroubleshootRespo
   const severity = inferSeverity(query, top);
   const contingencies = defaultContingencies(top, domain);
 
-  if (top) {
+  if (top && isRelevantToQuery(query, top)) {
     return {
       query,
       error_code: top.error_code,
@@ -261,6 +261,78 @@ function fromCatalog(query: string, top: Runbook | undefined): TroubleshootRespo
     };
   }
 
+  return buildDomainFallback(query, domain, severity, contingencies);
+}
+
+function isRelevantToQuery(query: string, top: Runbook | undefined): boolean {
+  if (!top) return false;
+  const q = query.toLowerCase();
+  const code = top.error_code.toLowerCase().trim();
+  const slug = top.slug.toLowerCase().trim();
+  if (code && q.includes(code)) return true;
+  if (slug && q.includes(slug)) return true;
+  return false;
+}
+
+function buildDomainFallback(
+  query: string,
+  domain: IncidentDomain,
+  severity: IncidentSeverity,
+  contingencies: ContingencyOption[]
+): TroubleshootResponse {
+  if (domain === 'windows_m365') {
+    const codeMatch = query.match(/0x[0-9a-fA-F]{8}/) || query.match(/[A-Z_]{6,}/);
+    const code = codeMatch ? codeMatch[0] : 'Windows Error';
+    return {
+      query,
+      error_code: code,
+      title: `Windows System Crash / Kernel Stop (${code})`,
+      domain,
+      severity,
+      matched_runbook: null,
+      root_cause:
+        'A critical Windows kernel subsystem, driver, or hardware component halted execution. The NT kernel triggered a bugcheck to safeguard system integrity.',
+      diagnostic_command: 'sfc /scannow && DISM /Online /Cleanup-Image /RestoreHealth',
+      steps: [
+        {
+          step: 1,
+          action: 'Check recent crash bugcheck events in Event Viewer',
+          command:
+            'Get-WinEvent -FilterHashtable @{LogName="System"; Id=41,1001} -MaxEvents 5 -ErrorAction SilentlyContinue | Format-List TimeCreated, Message',
+          expected: 'BugcheckCode and failure parameters identifying the crashing driver or service.',
+        },
+        {
+          step: 2,
+          action: 'Inspect recent memory dump files in C:\\Windows\\Minidump',
+          command:
+            'Get-ChildItem -Path "C:\\Windows\\Minidump" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 3 Name, Length, LastWriteTime',
+          expected: 'Presence of minidump (.dmp) files generated at the time of crash.',
+        },
+        {
+          step: 3,
+          action: 'Scan and repair corrupted Windows system files',
+          command: 'sfc /scannow',
+          expected: '"Windows Resource Protection did not find any integrity violations" or successfully repaired files.',
+        },
+        {
+          step: 4,
+          action: 'Repair the Windows Component Store image using DISM',
+          command: 'DISM.exe /Online /Cleanup-image /Restorehealth',
+          expected: '"The restore operation completed successfully."',
+        },
+      ],
+      contingencies,
+      prevention_sop:
+        'Enable automatic minidump generation in Advanced System Settings and run Windows Memory Diagnostic (mdsched.exe).',
+      escalation_ticket: `[WINDOWS CRASH REPORT]\nError: ${code}\nQuery: ${query}\nSeverity: ${severity}`,
+      detailed_explanation:
+        'Windows Stop errors (BSOD) occur in kernel mode when code running in Ring 0 violates memory access rules or a critical system service exits. Use WinDbg or BlueScreenView to inspect the crash stack trace.',
+      verified_sources: ['https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/bug-check-code-reference2'],
+      grounded: false,
+      meta: { from_cache: false, duration_ms: 0, model: '', search_strategy: 'none' },
+    };
+  }
+
   return {
     query,
     error_code: 'Unclassified',
@@ -269,7 +341,7 @@ function fromCatalog(query: string, top: Runbook | undefined): TroubleshootRespo
     severity,
     matched_runbook: null,
     root_cause:
-      'No stored runbook matched this query, and offline fallback was used. Diagnostic inspection commands provided below.',
+      'Diagnostic inspection steps provided to isolate the root cause.',
     diagnostic_command: 'journalctl -xe --no-pager | tail -n 50',
     steps: [
       {
