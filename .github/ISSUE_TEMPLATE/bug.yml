@@ -1,0 +1,36 @@
+name: Bug report
+description: Something is broken
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+
+  - type: input
+    id: query
+    attributes:
+      label: The query you ran
+      description: If this is a retrieval problem, this is usually all that's needed.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options:
+        - The public instance
+        - My own deployment
+        - Local development
+    validations:
+      required: true

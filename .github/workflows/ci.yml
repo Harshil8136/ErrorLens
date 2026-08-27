@@ -6,28 +6,60 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test-and-build:
-    name: Typecheck & Build
+  verify:
+    name: Verify
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: npm
 
-      - name: Install Dependencies
-        run: npm ci
+      - run: npm ci
 
-      - name: Typecheck Backend & Frontend
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Validate runbooks
+        run: npm run runbooks:validate
+
+      - name: Build frontend
+        run: npm run build
+
+      # The README quotes bundle sizes. This keeps that honest: if a change
+      # pushes the JS past the budget, the claim is wrong and CI says so.
+      - name: Bundle budget
         run: |
-          cd worker && npx tsc --noEmit
-          cd ../frontend && npx tsc --noEmit
+          JS=$(stat -c%s frontend/dist/assets/*.js)
+          CSS=$(stat -c%s frontend/dist/assets/*.css)
+          echo "JS ${JS} B, CSS ${CSS} B"
+          if [ "$JS" -gt 30000 ]; then
+            echo "::error::JS bundle ${JS} B exceeds the 30000 B budget"
+            exit 1
+          fi
 
-      - name: Build Frontend Assets
-        run: cd frontend && npm run build
+      - name: Worker builds for deploy
+        run: npx wrangler deploy --dry-run --outdir /tmp/worker-build
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: dummy

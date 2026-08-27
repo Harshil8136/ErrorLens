@@ -1,0 +1,62 @@
+name: Suggest a runbook
+description: An error ErrorLens should know about
+labels: [runbook]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        You don't need to write the runbook yourself — a good bug report with a
+        source link is plenty. If you do want to write it,
+        [CONTRIBUTING.md](../blob/main/CONTRIBUTING.md) has the format.
+
+  - type: input
+    id: error
+    attributes:
+      label: The error
+      description: Exactly as it appears, including the code
+      placeholder: 'Error 1102: Worker exceeded CPU time limit'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - kubernetes
+        - docker
+        - linux
+        - windows
+        - networking
+        - database
+        - node
+        - python
+        - cloud
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: cause
+    attributes:
+      label: What causes it
+      description: The mechanism, if you know it
+    validations:
+      required: false
+
+  - type: textarea
+    id: fix
+    attributes:
+      label: How you fixed it
+      description: Commands are ideal. Say which ones you actually ran.
+    validations:
+      required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: Vendor documentation link
+      description: Official docs, not a blog post. This is what makes the runbook checkable.
+      placeholder: https://developers.cloudflare.com/workers/observability/errors/
+    validations:
+      required: true

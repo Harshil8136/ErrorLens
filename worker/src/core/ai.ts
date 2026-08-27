@@ -116,9 +116,7 @@ async function tryGemini(
     if (!raw) return null;
 
     const response = fromModelJson(raw, query, top);
-    return response
-      ? { response, model: `google/${model}`, neurons: 0, provider: 'gemini' }
-      : null;
+    return response ? { response, model: `google/${model}`, neurons: 0, provider: 'gemini' } : null;
   } catch (err) {
     console.warn('[ai] Gemini call failed:', err);
     return null;
@@ -156,11 +154,7 @@ async function tryWorkersAi(
     return {
       response,
       model: `cloudflare/${model}`,
-      neurons: estimateNeurons(
-        DEFAULT_FALLBACK_MODEL,
-        system.length + user.length,
-        raw.length
-      ),
+      neurons: estimateNeurons(DEFAULT_FALLBACK_MODEL, system.length + user.length, raw.length),
       provider: 'workers-ai',
     };
   } catch (err) {
@@ -198,7 +192,8 @@ function fromModelJson(
   const domain = validateDomain(obj.domain, inferDomain(query, top));
   const severity = validateSeverity(obj.severity, inferSeverity(query, top));
   const contingencies = validateContingencies(obj.contingencies);
-  const finalContingencies = contingencies.length > 0 ? contingencies : defaultContingencies(top, domain);
+  const finalContingencies =
+    contingencies.length > 0 ? contingencies : defaultContingencies(top, domain);
 
   return {
     query,
@@ -208,11 +203,7 @@ function fromModelJson(
     severity,
     matched_runbook: toMatchedRunbook(top),
     root_cause: validateText(obj.root_cause, top?.root_cause ?? '', 2000),
-    diagnostic_command: validateText(
-      obj.diagnostic_command,
-      top?.diagnostic_command ?? '',
-      800
-    ),
+    diagnostic_command: validateText(obj.diagnostic_command, top?.diagnostic_command ?? '', 800),
     steps: finalSteps,
     contingencies: finalContingencies,
     prevention_sop: validateText(
@@ -294,20 +285,40 @@ function fromCatalog(query: string, top: Runbook | undefined): TroubleshootRespo
 }
 
 function inferDomain(query: string, top: Runbook | undefined): IncidentDomain {
-  const text = (query + ' ' + (top?.category || '') + ' ' + (top?.tags?.join(' ') || '')).toLowerCase();
-  if (/cloudflare|worker|r2|s3|aws|azure|gcp|edge|lambda|serverless/.test(text)) return 'cloud_edge';
-  if (/dns|servfail|nxdomain|ip|tcp|udp|vpn|wireguard|lan|wifi|zero\s*trust|cfzt|route|cisco/.test(text)) return 'networking_dns';
-  if (/docker|container|k8s|kubernetes|pod|helm|kubelet|imagepull/.test(text)) return 'containers_k8s';
-  if (/postgres|psql|supabase|mysql|sql|sqlite|deadlock|database|connection/.test(text)) return 'database_sql';
-  if (/windows|active\s*directory|kerberos|ad\s|m365|office|powershell|bsod|0x[0-9a-f]{8}/.test(text)) return 'windows_m365';
-  if (/linux|systemd|journalctl|cgroup|inode|enospc|bash|ssh|dmesg/.test(text)) return 'linux_sysadmin';
-  if (/sentry|posthog|betterstack|metric|alert|webhook|grafana|incident/.test(text)) return 'observability_app';
+  const text = (
+    query +
+    ' ' +
+    (top?.category || '') +
+    ' ' +
+    (top?.tags?.join(' ') || '')
+  ).toLowerCase();
+  if (/cloudflare|worker|r2|s3|aws|azure|gcp|edge|lambda|serverless/.test(text))
+    return 'cloud_edge';
+  if (
+    /dns|servfail|nxdomain|ip|tcp|udp|vpn|wireguard|lan|wifi|zero\s*trust|cfzt|route|cisco/.test(
+      text
+    )
+  )
+    return 'networking_dns';
+  if (/docker|container|k8s|kubernetes|pod|helm|kubelet|imagepull/.test(text))
+    return 'containers_k8s';
+  if (/postgres|psql|supabase|mysql|sql|sqlite|deadlock|database|connection/.test(text))
+    return 'database_sql';
+  if (
+    /windows|active\s*directory|kerberos|ad\s|m365|office|powershell|bsod|0x[0-9a-f]{8}/.test(text)
+  )
+    return 'windows_m365';
+  if (/linux|systemd|journalctl|cgroup|inode|enospc|bash|ssh|dmesg/.test(text))
+    return 'linux_sysadmin';
+  if (/sentry|posthog|betterstack|metric|alert|webhook|grafana|incident/.test(text))
+    return 'observability_app';
   return 'general_systems';
 }
 
 function inferSeverity(query: string, top: Runbook | undefined): IncidentSeverity {
   const text = (query + ' ' + (top?.title || '') + ' ' + (top?.error_code || '')).toLowerCase();
-  if (/outage|crash|down|panic|fatal|oom|kill|137|500|502|503|522|corrupt|data\s*loss/.test(text)) return 'P1_CRITICAL';
+  if (/outage|crash|down|panic|fatal|oom|kill|137|500|502|503|522|corrupt|data\s*loss/.test(text))
+    return 'P1_CRITICAL';
   if (/fail|error|timeout|denied|403|unsupported|degraded|slow|block/.test(text)) return 'P2_HIGH';
   if (/warn|retry|leak|deprecated/.test(text)) return 'P3_MEDIUM';
   return 'P4_LOW';
@@ -324,24 +335,28 @@ const DOMAIN_CONTINGENCIES: Record<IncidentDomain, ContingencyOption[]> = {
   containers_k8s: [
     {
       condition: 'If the container restarts before writing any logs',
-      action: 'Attach an ephemeral debug container so you can inspect the filesystem and network from inside the pod',
+      action:
+        'Attach an ephemeral debug container so you can inspect the filesystem and network from inside the pod',
       command: 'kubectl debug pod/<pod-name> -it --image=busybox --target=<container-name>',
     },
     {
       condition: 'If the process is killed during startup rather than crashing',
-      action: 'Check whether the liveness probe fires before the app finishes booting; a startupProbe is usually the fix',
+      action:
+        'Check whether the liveness probe fires before the app finishes booting; a startupProbe is usually the fix',
       command: 'kubectl describe pod <pod-name> | grep -A 5 Liveness',
     },
   ],
   cloud_edge: [
     {
       condition: 'If the error is intermittent rather than constant',
-      action: 'Tail live logs while reproducing so you can see the failing invocation rather than an aggregate',
+      action:
+        'Tail live logs while reproducing so you can see the failing invocation rather than an aggregate',
       command: 'npx wrangler tail --status error',
     },
     {
       condition: 'If the request never reaches your code',
-      action: 'Check whether the edge is rejecting it before dispatch by inspecting the response headers',
+      action:
+        'Check whether the edge is rejecting it before dispatch by inspecting the response headers',
       command: 'curl -sSI https://<your-domain>/<path>',
     },
   ],
@@ -385,30 +400,35 @@ const DOMAIN_CONTINGENCIES: Record<IncidentDomain, ContingencyOption[]> = {
     {
       condition: 'If connections are refused rather than slow',
       action: 'Check how many connections are open against the configured maximum',
-      command: "psql -c \"SELECT count(*), (SELECT setting FROM pg_settings WHERE name='max_connections') FROM pg_stat_activity;\"",
+      command:
+        'psql -c "SELECT count(*), (SELECT setting FROM pg_settings WHERE name=\'max_connections\') FROM pg_stat_activity;"',
     },
     {
       condition: 'If queries hang instead of erroring',
       action: 'Look for a blocking lock before assuming the query itself is slow',
-      command: "psql -c \"SELECT pid, state, wait_event_type, query FROM pg_stat_activity WHERE state <> 'idle';\"",
+      command:
+        'psql -c "SELECT pid, state, wait_event_type, query FROM pg_stat_activity WHERE state <> \'idle\';"',
     },
   ],
   observability_app: [
     {
       condition: 'If the alert fired but you cannot reproduce it',
-      action: 'Find the specific event rather than the aggregate, and check whether it is still occurring',
+      action:
+        'Find the specific event rather than the aggregate, and check whether it is still occurring',
       command: 'curl -s "https://<your-host>/api/health" -w "\n%{http_code}\n"',
     },
     {
       condition: 'If the webhook never arrived',
       action: 'Confirm the sender got a 2xx, since most providers silently drop after retries',
-      command: 'curl -sS -X POST https://<your-endpoint> -d "{}" -H "Content-Type: application/json" -i',
+      command:
+        'curl -sS -X POST https://<your-endpoint> -d "{}" -H "Content-Type: application/json" -i',
     },
   ],
   general_systems: [
     {
       condition: 'If the diagnostic command is missing or returns permission denied',
-      action: 'Check the tool is installed and that you are running as a user allowed to inspect the process',
+      action:
+        'Check the tool is installed and that you are running as a user allowed to inspect the process',
       command: 'command -v <tool> || echo "not installed"',
     },
     {

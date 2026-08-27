@@ -12,7 +12,12 @@ import {
 describe('validateSteps', () => {
   it('keeps a well-formed step', () => {
     const steps = validateSteps([
-      { step: 1, action: 'Check the exit code', command: 'docker inspect x', expected: 'OOMKilled' },
+      {
+        step: 1,
+        action: 'Check the exit code',
+        command: 'docker inspect x',
+        expected: 'OOMKilled',
+      },
     ]);
     expect(steps).toHaveLength(1);
     expect(steps[0]!).toMatchObject({

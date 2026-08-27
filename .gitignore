@@ -7,3 +7,7 @@ dist/
 coverage/
 *.log
 .DS_Store
+
+# Internal planning notes, kept outside the public repo
+docs/superpowers/
+bench/results.json

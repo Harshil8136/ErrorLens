@@ -116,7 +116,10 @@ describe('parseRunbook', () => {
   });
 
   it('rejects a step with no fenced command', () => {
-    const bad = VALID.replace('```bash\ndf -i /\n```\n\n**Expected:** IUse%', '**Expected:** IUse%');
+    const bad = VALID.replace(
+      '```bash\ndf -i /\n```\n\n**Expected:** IUse%',
+      '**Expected:** IUse%'
+    );
     assert.throws(() => parseRunbook(bad), /fenced command block/);
   });
 

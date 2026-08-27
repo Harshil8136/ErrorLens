@@ -25,11 +25,58 @@ function safeJson<T>(raw: string | null, fallback: T): T {
  * is handed pure noise.
  */
 const STOPWORDS = new Set([
-  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'but', 'by', 'can', 'do', 'does',
-  'for', 'from', 'get', 'getting', 'got', 'has', 'have', 'how', 'i', 'if', 'in',
-  'is', 'it', 'its', 'me', 'my', 'not', 'of', 'on', 'or', 'the', 'their', 'then',
-  'there', 'this', 'to', 'was', 'what', 'when', 'why', 'with', 'you', 'your',
-  'fix', 'fixing', 'help', 'issue', 'problem', 'error', 'errors',
+  'a',
+  'an',
+  'and',
+  'are',
+  'as',
+  'at',
+  'be',
+  'but',
+  'by',
+  'can',
+  'do',
+  'does',
+  'for',
+  'from',
+  'get',
+  'getting',
+  'got',
+  'has',
+  'have',
+  'how',
+  'i',
+  'if',
+  'in',
+  'is',
+  'it',
+  'its',
+  'me',
+  'my',
+  'not',
+  'of',
+  'on',
+  'or',
+  'the',
+  'their',
+  'then',
+  'there',
+  'this',
+  'to',
+  'was',
+  'what',
+  'when',
+  'why',
+  'with',
+  'you',
+  'your',
+  'fix',
+  'fixing',
+  'help',
+  'issue',
+  'problem',
+  'error',
+  'errors',
 ]);
 
 /**
@@ -85,11 +132,7 @@ export function buildFtsQuery(input: string): string | null {
  * bm25() returns a more negative number for a better match, so ASC is correct
  * here -- sorting DESC would return the worst matches first.
  */
-export async function searchRunbooks(
-  db: D1Database,
-  query: string,
-  limit = 5
-): Promise<Runbook[]> {
+export async function searchRunbooks(db: D1Database, query: string, limit = 5): Promise<Runbook[]> {
   const match = buildFtsQuery(query);
   if (!match) return [];
 
@@ -145,7 +188,10 @@ export async function listRunbooks(
 }
 
 export async function getRunbookBySlug(db: D1Database, slug: string): Promise<Runbook | null> {
-  const row = await db.prepare('SELECT * FROM runbooks WHERE slug = ?').bind(slug).first<RunbookRow>();
+  const row = await db
+    .prepare('SELECT * FROM runbooks WHERE slug = ?')
+    .bind(slug)
+    .first<RunbookRow>();
   return row ? parseRunbook(row) : null;
 }
 

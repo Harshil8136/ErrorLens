@@ -30,7 +30,8 @@ export function CommandBlock({ command, label = 'Terminal', compact = false }: P
     setTimeout(() => setState('idle'), 2500);
   };
 
-  const buttonText = state === 'copied' ? 'Copied' : state === 'failed' ? 'Select and copy' : 'Copy';
+  const buttonText =
+    state === 'copied' ? 'Copied' : state === 'failed' ? 'Select and copy' : 'Copy';
 
   return (
     <div class={compact ? 'cmd cmd-compact' : 'cmd'}>

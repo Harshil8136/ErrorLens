@@ -149,10 +149,14 @@ async function handleTroubleshoot(
   const verdict = await checkRateLimit(env, ipHash);
   if (!verdict.allowed) {
     log({ status: 429, durationMs: Date.now() - started, ipHash, country, rateLimited: true });
-    return json({ error: 'Rate limited', message: verdict.reason, retry_after: verdict.retryAfter }, 429, {
-      'Retry-After': String(verdict.retryAfter),
-      'X-RateLimit-Remaining': '0',
-    });
+    return json(
+      { error: 'Rate limited', message: verdict.reason, retry_after: verdict.retryAfter },
+      429,
+      {
+        'Retry-After': String(verdict.retryAfter),
+        'X-RateLimit-Remaining': '0',
+      }
+    );
   }
 
   const contentLength = Number.parseInt(request.headers.get('Content-Length') ?? '0', 10);
@@ -175,7 +179,13 @@ async function handleTroubleshoot(
     return json({ error: 'A "query" string is required' }, 400);
   }
   if (query.length > MAX_QUERY_CHARS) {
-    log({ status: 400, durationMs: Date.now() - started, ipHash, country, errorKind: 'query_too_long' });
+    log({
+      status: 400,
+      durationMs: Date.now() - started,
+      ipHash,
+      country,
+      errorKind: 'query_too_long',
+    });
     return json({ error: `Query must be ${MAX_QUERY_CHARS} characters or fewer` }, 400);
   }
 
@@ -194,7 +204,10 @@ async function handleTroubleshoot(
       model: cached.meta.model,
       cacheHit: true,
     });
-    return json(cached, 200, { 'X-Cache': 'HIT', 'X-RateLimit-Remaining': String(verdict.remaining) });
+    return json(cached, 200, {
+      'X-Cache': 'HIT',
+      'X-RateLimit-Remaining': String(verdict.remaining),
+    });
   }
 
   const { matches, strategy, dimsQueried } = await retrieve(env, query, 3);
@@ -247,11 +260,7 @@ function corsHeaders(): Record<string, string> {
   };
 }
 
-export function json(
-  data: unknown,
-  status = 200,
-  extra: Record<string, string> = {}
-): Response {
+export function json(data: unknown, status = 200, extra: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: {

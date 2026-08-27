@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Hybrid-retrieval troubleshooting engine for DevOps and cloud errors, running entirely on Cloudflare's free tier.",
   "license": "MIT",
+  "author": "Harshil",
   "engines": {
     "node": ">=20"
   },

@@ -39,14 +39,21 @@ export async function troubleshoot(
   try {
     body = await res.json();
   } catch {
-    throw new ApiError(`The service returned an unreadable response (HTTP ${res.status}).`, res.status);
+    throw new ApiError(
+      `The service returned an unreadable response (HTTP ${res.status}).`,
+      res.status
+    );
   }
 
   if (!res.ok) {
     const e = body as ErrorBody;
     // The 429 body carries a human-readable explanation of which budget was
     // hit; prefer it over the generic error field.
-    throw new ApiError(e.message ?? e.error ?? `Request failed (HTTP ${res.status}).`, res.status, e.retry_after);
+    throw new ApiError(
+      e.message ?? e.error ?? `Request failed (HTTP ${res.status}).`,
+      res.status,
+      e.retry_after
+    );
   }
 
   return body as TroubleshootResponse;

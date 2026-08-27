@@ -190,11 +190,6 @@ function buildBudget(
       'day',
       'Google AI Studio'
     ),
-    vectorize_dimensions: line(
-      monthlyDims,
-      FREE_TIER.vectorizeDimsPerMonth,
-      'month',
-      'Vectorize'
-    ),
+    vectorize_dimensions: line(monthlyDims, FREE_TIER.vectorizeDimsPerMonth, 'month', 'Vectorize'),
   };
 }

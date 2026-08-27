@@ -74,7 +74,10 @@ const VALID_DOMAINS: IncidentDomain[] = [
   'general_systems',
 ];
 
-export function validateDomain(value: unknown, fallback: IncidentDomain = 'general_systems'): IncidentDomain {
+export function validateDomain(
+  value: unknown,
+  fallback: IncidentDomain = 'general_systems'
+): IncidentDomain {
   if (typeof value === 'string' && (VALID_DOMAINS as string[]).includes(value)) {
     return value as IncidentDomain;
   }
@@ -83,7 +86,10 @@ export function validateDomain(value: unknown, fallback: IncidentDomain = 'gener
 
 const VALID_SEVERITIES: IncidentSeverity[] = ['P1_CRITICAL', 'P2_HIGH', 'P3_MEDIUM', 'P4_LOW'];
 
-export function validateSeverity(value: unknown, fallback: IncidentSeverity = 'P3_MEDIUM'): IncidentSeverity {
+export function validateSeverity(
+  value: unknown,
+  fallback: IncidentSeverity = 'P3_MEDIUM'
+): IncidentSeverity {
   if (typeof value === 'string' && (VALID_SEVERITIES as string[]).includes(value)) {
     return value as IncidentSeverity;
   }

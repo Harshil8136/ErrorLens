@@ -86,7 +86,9 @@ describe('POST /api/troubleshoot behaviour', () => {
 
   it('does not cache a degraded catalog answer', async () => {
     await troubleshoot({ query: 'nginx 502 bad gateway upstream' });
-    const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM query_cache').first<{ n: number }>();
+    const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM query_cache').first<{
+      n: number;
+    }>();
     expect(row?.n).toBe(0);
   });
 
@@ -161,7 +163,9 @@ describe('routing', () => {
   });
 
   it('404s an unknown runbook slug', async () => {
-    expect((await SELF.fetch('https://errorlens.test/api/runbooks/nope-not-real')).status).toBe(404);
+    expect((await SELF.fetch('https://errorlens.test/api/runbooks/nope-not-real')).status).toBe(
+      404
+    );
   });
 
   it('answers CORS preflight', async () => {

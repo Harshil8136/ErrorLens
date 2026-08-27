@@ -87,7 +87,13 @@ export function App() {
         <span class="examples-label">Try:</span>
         <div class="examples-list">
           {EXAMPLES.map((example) => (
-            <button key={example} type="button" class="example" disabled={busy} onClick={() => run(example)}>
+            <button
+              key={example}
+              type="button"
+              class="example"
+              disabled={busy}
+              onClick={() => run(example)}
+            >
               {example}
             </button>
           ))}
@@ -113,9 +119,9 @@ export function App() {
 
       <footer class="foot">
         <p>
-          Runs entirely on Cloudflare's free tier — Workers, D1 with FTS5, Vectorize and Workers AI —
-          with Gemini Flash-Lite on Google AI Studio's free tier for generation. Rate limited to keep
-          it that way.
+          Runs entirely on Cloudflare's free tier — Workers, D1 with FTS5, Vectorize and Workers AI
+          — with Gemini Flash-Lite on Google AI Studio's free tier for generation. Rate limited to
+          keep it that way.
         </p>
         <p>
           <a href="https://github.com/harshil/errorlens" rel="noopener noreferrer">

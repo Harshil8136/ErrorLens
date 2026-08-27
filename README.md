@@ -1,169 +1,214 @@
-<div align="center">
+# ErrorLens
 
-# ⚡ ErrorLens
+Paste an error code or a stack trace, get back the command that confirms the
+cause, the steps that fix it, and what to try when those don't work.
 
-**Deterministic, Edge-Native DevOps & Cloud Troubleshooting Engine**  
-*Instant diagnostic decision trees and validated remediation &mdash; 100% Free Tier on Cloudflare + Google AI Studio.*
+It runs entirely on free tiers — Cloudflare Workers, D1, Vectorize and Workers
+AI, plus Gemini Flash-Lite on Google AI Studio — and it is built so that staying
+free is a property of the design rather than a hope.
 
-[![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
-[![D1 Database](https://img.shields.io/badge/Storage-D1_FTS5-orange?logo=sqlite&logoColor=white)](https://developers.cloudflare.com/d1/)
-[![Vectorize](https://img.shields.io/badge/RAG-Vectorize_+_BGE-blue)](https://developers.cloudflare.com/vectorize/)
-[![Google AI Studio](https://img.shields.io/badge/LLM-Gemini_2.5_Flash--Lite-4285F4?logo=google&logoColor=white)](https://aistudio.google.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](LICENSE)
-[![Zero Cost](https://img.shields.io/badge/Cloud_Bill-$0.00/mo-success)](#-100-free-tier-cost-architecture)
-
-<br />
-
-[Live Demo](https://errorlens.pages.dev) &bull; [Architecture Deep Dive](docs/ARCHITECTURE.md) &bull; [Benchmarks vs ChatGPT](docs/BENCHMARKS.md) &bull; [Submit a Runbook](CONTRIBUTING.md)
-
-</div>
+[![CI](https://github.com/harshil/errorlens/actions/workflows/ci.yml/badge.svg)](https://github.com/harshil/errorlens/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ---
 
-## 💡 The Problem: Why Generic AI Fails at Troubleshooting
+## Why not just ask a chatbot
 
-When developers and SREs hit cryptic errors in production (`Docker Exit Code 137`, `CrashLoopBackOff`, `ERR_OSSL_EVP_UNSUPPORTED`, `502 Bad Gateway`), generic LLMs like ChatGPT and Gemini often:
-1. **Hallucinate Non-Existent Flags**: Invent invalid CLI parameters and deprecated flags.
-2. **Miss Error Anchors**: Fail to map exact error codes to verified community workarounds.
-3. **Generate Passive Walls of Text**: Produce 10 unranked paragraphs instead of **diagnostic decision trees** (*"Step 1: Run check command X. If output contains Y, do A; if output contains Z, do B"*).
+For most questions you should. This exists for a narrower case: the exact
+strings that general models handle badly.
 
-**ErrorLens** solves this by pairing a **Hybrid RAG engine (D1 FTS5 lexical BM25 + Vectorize dense cosine search)** with structured triage guardrails, delivering verified, copy-pasteable terminal commands within sub-second latencies.
+`Exit Code 137`, `ERR_OSSL_EVP_UNSUPPORTED`, `0x80070005`, `SQLSTATE[HY000]` —
+these are identifiers, not language. A sentence embedding puts "container ran
+out of memory" close to "RAM exhaustion", which is genuinely useful, but it has
+no particular reason to put `137` close to either. Meanwhile BM25 treats `137`
+as a rare, high-value token and nails it.
 
----
+So ErrorLens runs both and fuses the rankings:
 
-## ⚔️ Feature Comparison: ErrorLens vs. Vanilla ChatGPT / Gemini
+- **BM25 over SQLite FTS5** for the identifiers, exit codes and flag names.
+- **Dense vectors over Vectorize** (`bge-small-en-v1.5`, 384 dimensions) for the
+  paraphrases — "my container got killed for using too much RAM" finds the OOM
+  runbook without sharing a word with it.
+- **Reciprocal Rank Fusion** to combine them, because the two engines produce
+  incomparable numbers. `bm25()` returns unbounded negatives and cosine returns
+  0 to 1; fusing raw scores needs per-engine calibration that drifts as the
+  corpus grows. Fusing ranks doesn't.
 
-| Capability | Generic LLM (ChatGPT / Gemini) | ErrorLens Engine |
-| :--- | :---: | :---: |
-| **Step 1 Verification** | ❌ Jumps straight to random guesses | ✅ **Mandatory diagnostic command** to verify root cause before making changes |
-| **Flag Accuracy** | ⚠️ Frequently hallucinates CLI flags | ✅ **Grounded in official documentation & battle-tested runbooks** |
-| **Response Latency** | 1,500 ms – 3,500 ms | ⚡ **15 ms (Cache Hit)** / **280 ms (Fresh RAG)** |
-| **Interactive Triage** | ❌ Static text explanation | ✅ **Step-by-step decision flow with 1-click copy** |
-| **Infrastructure Cost** | Paid API credits ($20–$200/mo) | 💚 **100% Free Forever ($0.00/mo)** |
-| **Upstream Verification** | ❌ No direct documentation link | ✅ **Direct links to verified docs (K8s, Docker, Nginx, Node)** |
+The retrieved runbooks then ground the model's answer. Where a runbook matched,
+the UI says the steps were human-reviewed. Where none did, it says the model
+wrote them — which matters, because the whole interface is built around a button
+that copies commands into your shell.
 
----
+## Three tiers, and the last one needs no model at all
 
-## 🏗️ System Architecture
+1. **Gemini Flash-Lite** via AI Studio's free tier, with a `responseSchema` so
+   the output is parseable JSON rather than prose that contains JSON.
+2. **Workers AI Llama 3.1 8B** when Gemini is rate limited or down. No schema
+   support here, so the output goes through the same validator and gets
+   rejected if it doesn't hold up.
+3. **The catalog itself.** No model. The matched runbook rendered directly into
+   the response shape.
 
-ErrorLens runs completely within Cloudflare's global edge network and Google AI Studio's free tier:
+Tier 3 is the interesting one. It means there is no single upstream whose
+outage takes the service down, and it is the only tier whose commands were
+written by a person and checked against upstream documentation — which is why
+it's the only one that reports `grounded: true`.
 
-```
-                           [ Web Browser / Developer ]
-                                        │
-                         HTTPS Request / Search Query
-                                        │
-                                        ▼
-                  ┌───────────────────────────────────────────┐
-                  │   Cloudflare Pages / Worker Assets        │
-                  │   • Preact 10 + Tailwind CSS (< 20KB JS)  │
-                  │   • 0ms Cold Start, Global Edge CDN       │
-                  └─────────────────────┬─────────────────────┘
-                                        │
-                                        ▼
-                  ┌───────────────────────────────────────────┐
-                  │   Cloudflare Edge Worker (100k req/day)   │
-                  │                                           │
-                  │   1. Sliding-Window Rate Limiter (D1/KV)  │
-                  │      ↳ 5 req/min, 30 req/day per IP       │
-                  │                                           │
-                  │   2. Zero-Cost Normalized Query Cache     │
-                  │      ↳ 15ms hit latency, $0 compute       │
-                  │                                           │
-                  │   3. Hybrid RAG Search (RRF Fusion)       │
-                  │      ↳ D1 FTS5 (BM25 lexical search)      │
-                  │      ↳ Vectorize + Workers AI (BGE-small) │
-                  │                                           │
-                  │   4. Dual-Tier LLM Generation             │
-                  │      ↳ Primary: Gemini 2.5 Flash-Lite     │
-                  │      ↳ Fallback: Workers AI Llama 3.1 8B  │
-                  │      ↳ Catalog: Zero-LLM Offline Match    │
-                  └───────────────────────────────────────────┘
-```
+## How it stays free
 
----
+The binding constraint is not what people expect. It isn't request count, and
+it isn't tokens.
 
-## 💰 100% Free-Tier Cost Architecture
+The Workers free plan allows **1,000 KV writes per day** and **100,000 D1 rows
+written per day**. Every hot path in this app writes: the rate-limit counter,
+the request log, the cache fill. Built on KV, the ceiling would have been
+somewhere near 500 requests a day. Built on D1, it's two orders of magnitude
+higher.
 
-ErrorLens is engineered from the ground up to never generate surprise bills:
+So there is no KV binding. D1 is the only stateful dependency.
 
-| Service | Free Tier Allowance | Project Consumption | Monthly Cost |
-| :--- | :--- | :--- | :---: |
-| **Cloudflare Workers** | 100,000 requests / day | ~10,000 requests / day | **$0.00** |
-| **Cloudflare D1 (SQLite)** | 5M reads / day, 100k writes / day, 5GB storage | ~50,000 reads / day | **$0.00** |
-| **Cloudflare Vectorize** | 30M queried dimensions / month | ~25,000 queries / month | **$0.00** |
-| **Cloudflare Workers AI** | 10,000 Neurons / day | Embeddings & failover Llama | **$0.00** |
-| **Cloudflare Pages** | Unlimited bandwidth & requests | Static Single Page App | **$0.00** |
-| **Google AI Studio** | 15 RPM, 1,500 Requests / Day | Controlled via Edge Rate Limiter | **$0.00** |
-| **TOTAL** | &mdash; | &mdash; | **$0.00 / mo** |
+The admin panel at `/admin` shows live consumption against every published
+allowance — Worker requests, D1 writes, Workers AI neurons, Gemini calls,
+Vectorize dimensions. The D1 and neuron figures are deliberate over-estimates.
+A budget meter that flatters you is worse than not having one.
 
----
+Per-IP limits are 5 requests/minute and 30/day, enforced with a sliding-window
+counter that interpolates across the minute boundary. It's an approximation
+— two rows per identity instead of one row per request — but it closes the
+burst-at-the-boundary hole a plain fixed window leaves open.
 
-## 🚀 Quickstart & Local Development
+Full arithmetic in [docs/COST-MODEL.md](docs/COST-MODEL.md).
 
-### 1. Clone & Install Dependencies
+## Running it locally
+
 ```bash
-git clone https://github.com/your-username/errorlens.git
+git clone https://github.com/harshil/errorlens.git
 cd errorlens
 npm install
+
+cp worker/.dev.vars.example worker/.dev.vars   # add your AI Studio key
+npm run dev --workspace=worker                 # API on :8787
+npm run dev:frontend                           # UI on :3000
 ```
 
-### 2. Configure Environment Variables
-Inside `worker/.dev.vars`, add your free Google AI Studio API key (obtainable at [aistudio.google.com](https://aistudio.google.com)):
-```ini
-GEMINI_API_KEY=AIzaSyYourFreeGoogleApiKeyHere
-```
+Without a `GEMINI_API_KEY` the app still works — it falls through to Workers AI,
+and then to the catalog. That's the point of the tiering, and it makes the
+project usable offline.
 
-### 3. Initialize Local D1 Database & Run Migrations
+Apply the schema before the first run:
+
 ```bash
 cd worker
 npx wrangler d1 migrations apply errorlens-db --local
 ```
 
-### 4. Start Local Development Environment
-```bash
-# Start Worker API (Port 8787)
-npm run dev --workspace=worker
+## Deploying
 
-# In a separate terminal, start Frontend (Port 3000)
-npm run dev --workspace=frontend
-```
-Open `http://localhost:3000` in your browser.
-
----
-
-## 🚢 One-Click Cloudflare Deployment
+The IDs in `worker/wrangler.jsonc` point at my account. Create your own:
 
 ```bash
-# 1. Create your free remote D1 database
 npx wrangler d1 create errorlens-db
+npx wrangler vectorize create errorlens-vectors --dimensions=384 --metric=cosine
+```
 
-# 2. Apply migrations to Cloudflare D1
+Put the returned `database_id` into `wrangler.jsonc`, then:
+
+```bash
 npx wrangler d1 migrations apply errorlens-db --remote
 
-# 3. Create your free Vectorize index (384 dimensions for BGE-small)
-npx wrangler vectorize create errorlens-vectors --dimensions=384 --metric=cosine
+npx wrangler secret put GEMINI_API_KEY   # aistudio.google.com/apikey
+npx wrangler secret put ADMIN_TOKEN      # openssl rand -hex 32
+npx wrangler secret put IP_HASH_SALT     # openssl rand -hex 32
 
-# 4. Set your Google AI Studio key as a secret
-npx wrangler secret put GEMINI_API_KEY
-
-# 5. Build frontend and deploy full stack to edge
-npm run build --workspace=frontend
+npm run build                 # frontend/dist, served by the Worker
 npm run deploy --workspace=worker
 ```
 
----
+Then populate the vector index, which is a separate step because embedding the
+whole corpus costs far more than the 10ms CPU a single request gets:
 
-## 🤝 Contributing New Runbooks
+```bash
+curl -X POST https://<your-worker>/api/admin/reindex \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
 
-Have a recurring bug or incident runbook you want to add?
-1. Check out [`CONTRIBUTING.md`](CONTRIBUTING.md).
-2. Add a new markdown file to `datasets/runbooks/<slug>.md`.
-3. Run `node datasets/scripts/ingest.js` to compile it to SQL.
-4. Submit a Pull Request!
+If `ADMIN_TOKEN` isn't set, the entire admin surface returns 503 rather than
+falling open.
 
----
+## Layout
 
-## 📄 License
+```
+worker/src/
+  index.ts          router, security headers, request logging
+  core/             ai, prompts, rag, embeddings, cache, schema, security
+  storage/          d1, rate-limit, logs, usage, vectorize
+  admin/            admin API and panel
+frontend/src/       Preact app, no framework CSS
+shared/api.ts       the wire contract, imported by both sides
+datasets/           runbook markdown and the pipeline that compiles it
+bench/              latency and retrieval harness
+```
 
-Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more information.
+## Adding a runbook
+
+Runbooks are markdown with frontmatter. The pipeline validates them, then
+compiles them into a real numbered D1 migration — the thing that was missing in
+the first version of this project, where contributions landed in a generated
+file nothing ever read.
+
+```bash
+# write datasets/runbooks/your-error.md
+npm run runbooks:validate
+npm run runbooks:build
+```
+
+Format and rules are in [CONTRIBUTING.md](CONTRIBUTING.md). The validator is
+strict on purpose: every step needs a real command in its own fenced block and
+a stated expected outcome, because the UI puts a copy button next to whatever
+ends up in that field.
+
+## What's measured
+
+Bundle, from `npm run build`:
+
+| Asset |      Raw | Gzipped |
+| :---- | -------: | ------: |
+| JS    | 21.95 kB | 9.07 kB |
+| CSS   |  7.59 kB | 2.38 kB |
+
+Tests: 77 in the Worker (router, rate limiter, rank fusion, FTS query builder,
+output validators, admin auth) and 17 for the runbook parser. The Worker suite
+runs inside `workerd` against a real D1 with the migrations applied, not mocks.
+
+Latency numbers are deliberately absent. There's a harness in `bench/` that
+writes `bench/results.json` against a deployed instance; until that has been run
+and committed, there's nothing here worth quoting.
+
+## Limitations
+
+- **The corpus is small.** Nine runbooks at the time of writing. Retrieval
+  quality scores well against it, but that says more about the size of the test
+  than the quality of the engine.
+- **English only.** The FTS5 tokenizer is configured for English stemming.
+- **No authentication on the public API.** It's rate limited by IP, which is a
+  cost control, not a security boundary.
+- **The Workers AI tier is small.** At roughly 87 neurons per call against a
+  10,000/day allowance, it covers about 115 fallback requests a day before tier
+  3 takes over.
+- **Hashed IPs are still personal data.** See [docs/PRIVACY.md](docs/PRIVACY.md)
+  for what's stored and for how long.
+- **Prompt injection is only partly mitigated.** User input is delimited and
+  framed as data, and output is schema-validated, but a model can still be
+  argued into writing a command you shouldn't run. That's why provenance is
+  shown on every answer.
+
+## Reading further
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — retrieval, fusion, caching, the request path
+- [docs/COST-MODEL.md](docs/COST-MODEL.md) — where the ceilings actually are
+- [docs/PRIVACY.md](docs/PRIVACY.md) — what gets logged
+- [SECURITY.md](SECURITY.md) — reporting a vulnerability
+
+## License
+
+MIT. See [LICENSE](LICENSE).

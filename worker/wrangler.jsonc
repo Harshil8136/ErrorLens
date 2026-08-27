@@ -16,8 +16,8 @@
       "binding": "DB",
       "database_name": "errorlens-db",
       "database_id": "ff23e3f2-0c0f-49a2-9f1c-43012a06e5f5",
-      "migrations_dir": "migrations"
-    }
+      "migrations_dir": "migrations",
+    },
   ],
 
   // 384 dimensions to match @cf/baai/bge-small-en-v1.5. Creating the index at
@@ -25,8 +25,8 @@
   "vectorize": [
     {
       "binding": "VECTOR_INDEX",
-      "index_name": "errorlens-vectors"
-    }
+      "index_name": "errorlens-vectors",
+    },
   ],
 
   "ai": { "binding": "AI" },
@@ -38,7 +38,7 @@
   "assets": {
     "directory": "../frontend/dist",
     "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
   },
 
   // Nightly cleanup: expired cache rows, stale rate-limit buckets, logs past
@@ -55,8 +55,8 @@
     "MAX_RPM_PER_IP": "5",
     "MAX_RPD_PER_IP": "30",
     "CACHE_TTL_SECONDS": "604800",
-    "LOG_RETENTION_DAYS": "30"
-  }
+    "LOG_RETENTION_DAYS": "30",
+  },
 
   // Secrets, set with `wrangler secret put <NAME>`:
   //   GEMINI_API_KEY  - Google AI Studio, free tier

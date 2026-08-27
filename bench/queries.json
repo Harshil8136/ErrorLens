@@ -1,0 +1,38 @@
+[
+  { "query": "Docker container exited with code 137", "expect_slug": "docker-exit-code-137-oom" },
+  {
+    "query": "my container keeps getting killed for using too much memory",
+    "expect_slug": "docker-exit-code-137-oom"
+  },
+  { "query": "Kubernetes Pod stuck in CrashLoopBackOff", "expect_slug": "k8s-crashloopbackoff" },
+  {
+    "query": "pod restarts over and over and never becomes ready",
+    "expect_slug": "k8s-crashloopbackoff"
+  },
+  {
+    "query": "error:0308010C digital envelope routines unsupported",
+    "expect_slug": "node-err-ossl-evp-unsupported"
+  },
+  {
+    "query": "webpack build broke after upgrading node",
+    "expect_slug": "node-err-ossl-evp-unsupported"
+  },
+  {
+    "query": "nginx 502 bad gateway upstream connection refused",
+    "expect_slug": "nginx-502-bad-gateway"
+  },
+  {
+    "query": "no space left on device but df -h shows free space",
+    "expect_slug": "linux-no-space-inodes"
+  },
+  {
+    "query": "psql FATAL remaining connection slots are reserved",
+    "expect_slug": "postgres-fatal-remaining-connection-slots"
+  },
+  {
+    "query": "Cloudflare worker exceeded CPU time limit",
+    "expect_slug": "cloudflare-worker-error-1102-cpu"
+  },
+  { "query": "kubernetes ImagePullBackOff ErrImagePull", "expect_slug": "k8s-imagepullbackoff" },
+  { "query": "pod OOMKilled exit code 137 kubernetes", "expect_slug": "k8s-pod-oom-killed" }
+]

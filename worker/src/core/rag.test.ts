@@ -4,9 +4,21 @@ import type { Runbook } from '../types';
 
 function rb(id: number, slug = `rb-${id}`): Runbook {
   return {
-    id, slug, category: 'linux', error_code: `E${id}`, title: `Runbook ${id}`,
-    summary: '', root_cause: '', diagnostic_command: '', solution_steps: [], tags: [],
-    source_url: null, hit_count: 0, verified_at: null, created_at: '', updated_at: '',
+    id,
+    slug,
+    category: 'linux',
+    error_code: `E${id}`,
+    title: `Runbook ${id}`,
+    summary: '',
+    root_cause: '',
+    diagnostic_command: '',
+    solution_steps: [],
+    tags: [],
+    source_url: null,
+    hit_count: 0,
+    verified_at: null,
+    created_at: '',
+    updated_at: '',
   };
 }
 
