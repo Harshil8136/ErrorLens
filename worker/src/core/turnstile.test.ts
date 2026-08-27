@@ -51,11 +51,7 @@ describe('verifyTurnstile', () => {
     // tokens issued to any site the widget covers.
     const spy = vi.fn();
     vi.stubGlobal('fetch', spy);
-    const result = await verifyTurnstile(
-      envWith({ TURNSTILE_HOSTNAMES: '' }),
-      'token',
-      '1.2.3.4'
-    );
+    const result = await verifyTurnstile(envWith({ TURNSTILE_HOSTNAMES: '' }), 'token', '1.2.3.4');
     expect(result).toEqual({ ok: false, reason: 'invalid' });
     expect(spy).not.toHaveBeenCalled();
   });
@@ -97,7 +93,10 @@ describe('verifyTurnstile', () => {
   });
 
   it('fails closed on an unparseable body', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('not json', { status: 200 })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('not json', { status: 200 }))
+    );
     expect(await verifyTurnstile(envWith(), 'tok', '1.2.3.4')).toMatchObject({ ok: false });
   });
 });

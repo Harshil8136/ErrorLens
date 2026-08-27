@@ -1,64 +1,68 @@
+import { Check, Copy, Terminal } from 'lucide-preact';
 import { useState } from 'preact/hooks';
 
 interface Props {
   command: string;
   label?: string;
-  /** Rendered smaller and without the terminal chrome, for step-level commands. */
   compact?: boolean;
 }
 
 type CopyState = 'idle' | 'copied' | 'failed';
 
-/**
- * A copyable command.
- *
- * Copy state is held per-block rather than in a shared "last copied text"
- * value, which used to light up every block whose command happened to match.
- */
 export function CommandBlock({ command, label = 'Terminal', compact = false }: Props) {
   const [state, setState] = useState<CopyState>('idle');
 
   const copy = async () => {
     try {
-      // Rejects outside a secure context, and is absent entirely in a few
-      // mobile in-app browsers. Unawaited, that surfaces as nothing happening.
       await navigator.clipboard.writeText(command);
       setState('copied');
     } catch {
       setState('failed');
     }
-    setTimeout(() => setState('idle'), 2500);
+    setTimeout(() => setState('idle'), 2200);
   };
 
-  const buttonText =
-    state === 'copied' ? 'Copied' : state === 'failed' ? 'Select and copy' : 'Copy';
-
   return (
-    <div class={compact ? 'cmd cmd-compact' : 'cmd'}>
+    <div class={compact ? 'cmd-wrapper cmd-compact' : 'cmd-wrapper'}>
       {!compact && (
-        <div class="cmd-bar">
-          <span class="cmd-dots" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>
-          <span class="cmd-label">{label}</span>
+        <div class="cmd-header">
+          <div class="cmd-tag">
+            <Terminal size={12} strokeWidth={2.5} />
+            <span class="cmd-label">{label}</span>
+          </div>
+          <span class="cmd-shortcut-hint">Non-destructive command</span>
         </div>
       )}
-      <div class="cmd-body">
-        <code class="cmd-text">{command}</code>
+      <div class="cmd-container">
+        <div class="cmd-prompt-sign" aria-hidden="true">
+          $
+        </div>
+        <pre class="cmd-code">
+          <code>{command}</code>
+        </pre>
         <button
           type="button"
-          class={`copy${state === 'copied' ? ' is-copied' : ''}`}
+          class={`cmd-copy-btn ${state === 'copied' ? 'copied' : ''}`}
           onClick={copy}
-          aria-label={`Copy command: ${command.slice(0, 60)}`}
+          aria-label={`Copy command: ${command.slice(0, 50)}`}
+          title="Copy command to clipboard"
         >
-          {buttonText}
+          {state === 'copied' ? (
+            <>
+              <Check size={13} strokeWidth={2.5} />
+              <span>Copied</span>
+            </>
+          ) : (
+            <>
+              <Copy size={13} strokeWidth={2} />
+              <span>Copy</span>
+            </>
+          )}
         </button>
       </div>
       {state === 'failed' && (
         <p class="cmd-hint" role="status">
-          Clipboard access was blocked. Select the text above and copy manually.
+          Could not access clipboard. Please select text manually.
         </p>
       )}
     </div>

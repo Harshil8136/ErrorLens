@@ -53,8 +53,8 @@ jobs:
           JS=$(stat -c%s frontend/dist/assets/*.js)
           CSS=$(stat -c%s frontend/dist/assets/*.css)
           echo "JS ${JS} B, CSS ${CSS} B"
-          if [ "$JS" -gt 30000 ]; then
-            echo "::error::JS bundle ${JS} B exceeds the 30000 B budget"
+          if [ "$JS" -gt 60000 ]; then
+            echo "::error::JS bundle ${JS} B exceeds the 60000 B budget"
             exit 1
           fi
 

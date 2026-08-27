@@ -20,15 +20,6 @@
     },
   ],
 
-  // 384 dimensions to match @cf/baai/bge-small-en-v1.5. Creating the index at
-  // any other width makes every upsert fail.
-  "vectorize": [
-    {
-      "binding": "VECTOR_INDEX",
-      "index_name": "errorlens-vectors",
-    },
-  ],
-
   "ai": { "binding": "AI" },
 
   // No KV binding on purpose. The free plan allows 1,000 KV writes/day but
@@ -51,7 +42,6 @@
     "ENVIRONMENT": "production",
     "GEMINI_MODEL": "gemini-3.5-flash-lite",
     "FALLBACK_MODEL": "@cf/meta/llama-3.1-8b-instruct",
-    "EMBEDDING_MODEL": "@cf/baai/bge-small-en-v1.5",
     "MAX_RPM_PER_IP": "5",
     "MAX_RPD_PER_IP": "30",
     "CACHE_TTL_SECONDS": "604800",

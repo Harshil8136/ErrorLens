@@ -44,7 +44,7 @@ const WORKERS_AI_TIMEOUT_MS = 20_000;
 export async function generate(
   env: Env,
   query: string,
-  matches: RagMatch[]
+  matches: RagMatch[] = []
 ): Promise<GenerationResult> {
   const top = matches[0]?.runbook;
   const system = buildSystemPrompt();
@@ -299,7 +299,8 @@ function buildDomainFallback(
           action: 'Check recent crash bugcheck events in Event Viewer',
           command:
             'Get-WinEvent -FilterHashtable @{LogName="System"; Id=41,1001} -MaxEvents 5 -ErrorAction SilentlyContinue | Format-List TimeCreated, Message',
-          expected: 'BugcheckCode and failure parameters identifying the crashing driver or service.',
+          expected:
+            'BugcheckCode and failure parameters identifying the crashing driver or service.',
         },
         {
           step: 2,
@@ -312,7 +313,8 @@ function buildDomainFallback(
           step: 3,
           action: 'Scan and repair corrupted Windows system files',
           command: 'sfc /scannow',
-          expected: '"Windows Resource Protection did not find any integrity violations" or successfully repaired files.',
+          expected:
+            '"Windows Resource Protection did not find any integrity violations" or successfully repaired files.',
         },
         {
           step: 4,
@@ -327,7 +329,9 @@ function buildDomainFallback(
       escalation_ticket: `[WINDOWS CRASH REPORT]\nError: ${code}\nQuery: ${query}\nSeverity: ${severity}`,
       detailed_explanation:
         'Windows Stop errors (BSOD) occur in kernel mode when code running in Ring 0 violates memory access rules or a critical system service exits. Use WinDbg or BlueScreenView to inspect the crash stack trace.',
-      verified_sources: ['https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/bug-check-code-reference2'],
+      verified_sources: [
+        'https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/bug-check-code-reference2',
+      ],
       grounded: false,
       meta: { from_cache: false, duration_ms: 0, model: '', search_strategy: 'none' },
     };
@@ -340,8 +344,7 @@ function buildDomainFallback(
     domain,
     severity,
     matched_runbook: null,
-    root_cause:
-      'Diagnostic inspection steps provided to isolate the root cause.',
+    root_cause: 'Diagnostic inspection steps provided to isolate the root cause.',
     diagnostic_command: 'journalctl -xe --no-pager | tail -n 50',
     steps: [
       {

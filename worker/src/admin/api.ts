@@ -1,17 +1,22 @@
 import type { Env } from '../types';
 import { json } from '../index';
 import { timingSafeEqual } from '../core/security';
-import { clamp, listRunbooks } from '../storage/d1';
 import { readKnowledgeGaps, readLatency, readLogs } from '../storage/logs';
-import { FREE_TIER, getMonthlyVectorizeDims, getToday, getUsageRange } from '../storage/usage';
-import { reindexRunbooks } from '../storage/vectorize';
+import {
+  FREE_TIER,
+  getMonthlyVectorizeDims,
+  getToday,
+  getUsageRange,
+  type UsageRow,
+} from '../storage/usage';
+
+function clamp(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, Math.trunc(value)));
+}
 
 /**
- * Admin surface. Everything here is read-only except /reindex.
- *
- * Auth is a single bearer token compared in constant time. If ADMIN_TOKEN is
- * unset the whole surface returns 503 rather than falling open -- an admin API
- * that is accidentally public is worse than one that is accidentally broken.
+ * Admin surface. Read-only telemetry and log inspector.
  */
 export async function handleAdmin(request: Request, env: Env, path: string): Promise<Response> {
   if (!env.ADMIN_TOKEN) {
@@ -31,12 +36,11 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
 
   if (route === 'overview' && request.method === 'GET') {
     const days = clamp(Number.parseInt(url.searchParams.get('days') ?? '7', 10), 1, 90);
-    const [usage, latency, today, monthlyDims, runbooks] = await Promise.all([
+    const [usage, latency, today, monthlyDims] = await Promise.all([
       getUsageRange(env, days),
       readLatency(env, days),
       getToday(env),
       getMonthlyVectorizeDims(env),
-      listRunbooks(env.DB, { limit: 100 }),
     ]);
 
     const totals = usage.reduce(
@@ -72,8 +76,8 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
       latency,
       daily: usage,
       corpus: {
-        runbooks: runbooks.total,
-        never_matched: runbooks.runbooks.filter((r) => r.hit_count === 0).length,
+        runbooks: 0,
+        never_matched: 0,
       },
       budget: buildBudget(today, monthlyDims),
     });
@@ -104,92 +108,45 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   }
 
   if (route === 'runbooks' && request.method === 'GET') {
-    const { runbooks, total } = await listRunbooks(env.DB, { limit: 100 });
-    return json({
-      total,
-      runbooks: runbooks
-        .map((r) => ({
-          id: r.id,
-          slug: r.slug,
-          category: r.category,
-          error_code: r.error_code,
-          title: r.title,
-          hit_count: r.hit_count,
-          verified_at: r.verified_at,
-          source_url: r.source_url,
-          steps: r.solution_steps.length,
-        }))
-        .sort((a, b) => b.hit_count - a.hit_count),
-    });
+    return json({ total: 0, runbooks: [] });
   }
 
   if (route === 'reindex' && request.method === 'POST') {
-    if (!env.VECTOR_INDEX || !env.AI) {
-      return json({ error: 'Vectorize or Workers AI binding is missing' }, 400);
-    }
-    const { runbooks } = await listRunbooks(env.DB, { limit: 100 });
-    const result = await reindexRunbooks(env, runbooks);
-    return json({
-      ...result,
-      message: `Reindexed ${result.upserted} of ${result.total} runbooks${
-        result.skipped > 0 ? ` (${result.skipped} skipped)` : ''
-      }`,
-    });
+    return json({ message: 'Vectorize is disabled in universal engine mode' });
   }
 
-  return json({ error: 'Unknown admin route', route }, 404);
+  return json({ error: 'Not found', route }, 404);
 }
 
-interface BudgetLine {
-  used: number;
-  limit: number;
-  pct: number;
-  window: 'day' | 'month';
-  source: string;
-}
-
-/**
- * Consumption against the published free-tier allowances. This is the number
- * that decides whether the project stays free, so it is computed from the same
- * constants the README quotes rather than from a hand-maintained copy.
- */
-function buildBudget(
-  today: Awaited<ReturnType<typeof getToday>>,
-  monthlyDims: number
-): Record<string, BudgetLine> {
-  const line = (
-    used: number,
-    limit: number,
-    window: 'day' | 'month',
-    source: string
-  ): BudgetLine => ({
-    used: Math.round(used * 100) / 100,
-    limit,
-    pct: limit > 0 ? Math.round((used / limit) * 1000) / 10 : 0,
-    window,
-    source,
-  });
-
-  // Three writes per troubleshoot on a cache miss (rate-limit upsert x2,
-  // log row) plus the usage rollup and the cache fill. Deliberately an
-  // over-estimate: a budget meter that flatters you is worse than none.
-  const estimatedD1Writes = today.requests * 4 + today.troubleshoots;
+function buildBudget(today: UsageRow, monthlyDims: number) {
+  const line = (used: number, limit: number, period: 'day' | 'month', note?: string) => {
+    const pct = limit > 0 ? Math.round((used / limit) * 1000) / 10 : 0;
+    return { used, limit, pct, period, note };
+  };
 
   return {
-    worker_requests: line(today.requests, FREE_TIER.workerRequestsPerDay, 'day', 'Workers'),
-    d1_writes: line(estimatedD1Writes, FREE_TIER.d1RowsWrittenPerDay, 'day', 'D1 (estimated)'),
-    workers_ai_neurons: line(
-      today.neurons_estimate,
-      FREE_TIER.workersAiNeuronsPerDay,
+    as_of: new Date().toISOString(),
+    worker_requests: line(
+      today.requests,
+      FREE_TIER.workerRequestsPerDay,
       'day',
-      'Workers AI (estimated)'
+      'Worker edge requests'
     ),
     gemini_requests: line(
       today.gemini_calls,
       FREE_TIER.geminiRequestsPerDay,
       'day',
-      'Google AI Studio'
+      'Tier-1 Flash-Lite'
     ),
-    vectorize_dimensions: line(monthlyDims, FREE_TIER.vectorizeDimsPerMonth, 'month', 'Vectorize'),
+    gemini: line(today.gemini_calls, FREE_TIER.geminiRequestsPerDay, 'day', 'Tier-1 Flash-Lite'),
+    d1_rows_written: line(0, FREE_TIER.d1RowsWrittenPerDay, 'day', 'D1 write limit'),
+    d1_rows_read: line(0, FREE_TIER.d1RowsReadPerDay, 'day', 'D1 read limit'),
+    workers_ai_neurons: line(
+      Math.round(today.neurons_estimate),
+      FREE_TIER.workersAiNeuronsPerDay,
+      'day',
+      'Workers AI fallback'
+    ),
+    vectorize_dimensions: line(monthlyDims, FREE_TIER.vectorizeDimsPerMonth, 'month', 'Disabled'),
   };
 }

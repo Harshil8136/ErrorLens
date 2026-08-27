@@ -13,13 +13,11 @@ import type { TriageStep, SearchStrategy, TroubleshootResponse } from '../../sha
 export interface Env {
   DB: D1Database;
   AI?: Ai;
-  VECTOR_INDEX?: VectorizeIndex;
   ASSETS?: Fetcher;
 
   ENVIRONMENT?: string;
   GEMINI_MODEL?: string;
   FALLBACK_MODEL?: string;
-  EMBEDDING_MODEL?: string;
   MAX_RPM_PER_IP?: string;
   MAX_RPD_PER_IP?: string;
   CACHE_TTL_SECONDS?: string;

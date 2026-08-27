@@ -151,9 +151,10 @@ npm run deploy
 ## 👤 Author
 
 **Harshil Panchal**  
-NOC / IT Support Analyst • Infrastructure Monitoring & Incident Response  
-- LinkedIn: [linkedin.com/in/pharshil](https://www.linkedin.com/in/pharshil/)  
-- Email: [Harshil.8136@gmail.com](mailto:Harshil.8136@gmail.com)  
+NOC / IT Support Analyst • Infrastructure Monitoring & Incident Response
+
+- LinkedIn: [linkedin.com/in/pharshil](https://www.linkedin.com/in/pharshil/)
+- Email: [Harshil.8136@gmail.com](mailto:Harshil.8136@gmail.com)
 
 ---
 

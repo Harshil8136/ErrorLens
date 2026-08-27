@@ -1,9 +1,7 @@
 import type { Env, TroubleshootResponse } from './types';
 import { checkRateLimit, purgeRateLimitBuckets } from './storage/rate-limit';
 import { readCache, writeCache, bumpCacheHit, purgeExpiredCache } from './core/cache';
-import { retrieve } from './core/rag';
 import { generate } from './core/ai';
-import { clamp, getRunbookBySlug, incrementHitCount, listRunbooks } from './storage/d1';
 import { purgeLogs, writeLog, type LogEntry } from './storage/logs';
 import { recordUsage } from './storage/usage';
 import { hashIp } from './core/security';
@@ -50,7 +48,6 @@ export default {
           time: new Date().toISOString(),
           bindings: {
             d1: Boolean(env.DB),
-            vectorize: Boolean(env.VECTOR_INDEX),
             workers_ai: Boolean(env.AI),
             gemini_key: Boolean(env.GEMINI_API_KEY),
             admin_token: Boolean(env.ADMIN_TOKEN),
@@ -58,43 +55,18 @@ export default {
         });
       }
 
-      // Lets the frontend discover the site key at runtime instead of baking
-      // it in at build time, so one build works across deployments.
+      // Lets the frontend discover the site key at runtime
       if (path === '/api/config' && request.method === 'GET') {
-        return json(
-          // `|| null` not `??` -- an unset wrangler var is an empty string,
-          // not undefined, and the frontend branches on null.
-          { turnstile_site_key: env.TURNSTILE_SITE_KEY || null },
-          200,
-          {
-            'Cache-Control': 'public, max-age=300',
-          }
-        );
-      }
-
-      if (path === '/api/runbooks' && request.method === 'GET') {
-        const result = await listRunbooks(env.DB, {
-          category: url.searchParams.get('category') ?? undefined,
-          limit: clamp(Number.parseInt(url.searchParams.get('limit') ?? '50', 10), 1, 100),
-          offset: clamp(Number.parseInt(url.searchParams.get('offset') ?? '0', 10), 0, 100_000),
+        return json({ turnstile_site_key: env.TURNSTILE_SITE_KEY || null }, 200, {
+          'Cache-Control': 'public, max-age=300',
         });
-        log({ status: 200, durationMs: Date.now() - started });
-        return json(result);
-      }
-
-      if (path.startsWith('/api/runbooks/') && request.method === 'GET') {
-        const slug = decodeURIComponent(path.slice('/api/runbooks/'.length)).trim();
-        if (!slug) return json({ error: 'Runbook slug is required' }, 400);
-
-        const runbook = await getRunbookBySlug(env.DB, slug);
-        log({ status: runbook ? 200 : 404, durationMs: Date.now() - started, matchedSlug: slug });
-        return runbook ? json({ runbook }) : json({ error: 'Runbook not found' }, 404);
       }
 
       if (path === '/api/troubleshoot' && request.method === 'POST') {
         return await handleTroubleshoot(request, env, ctx, started, log);
       }
 
+      // Admin panel and API
       if (path === '/admin' || path === '/admin/') {
         return html(renderAdminPanel());
       }
@@ -103,9 +75,7 @@ export default {
         return await handleAdmin(request, env, path);
       }
 
-      // Anything else under /api is a real 404. Without this the SPA asset
-      // handler below answers with index.html and a 200, which makes a typo in
-      // a fetch() call look like a successful request returning HTML.
+      // 404 for anything else under /api
       if (path.startsWith('/api/')) {
         return json({ error: 'Not found', path }, 404);
       }
@@ -120,15 +90,12 @@ export default {
       const ref = crypto.randomUUID().slice(0, 8);
       console.error(`[${ref}] unhandled:`, err);
       log({ status: 500, durationMs: Date.now() - started, errorKind: 'unhandled' });
-      // The reference is logged next to the stack trace; the client gets the
-      // reference only. Echoing err.message here is how internals leak.
       return json({ error: 'Internal error', reference: ref }, 500);
     }
   },
 
   /**
-   * Nightly housekeeping. Every table on the write path has a retention rule;
-   * without one, D1's 5 GB free allowance is a countdown rather than a limit.
+   * Nightly housekeeping: cache expiry, stale rate-limit buckets, and logs.
    */
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(
@@ -204,8 +171,6 @@ async function handleTroubleshoot(
     return json({ error: `Query must be ${MAX_QUERY_CHARS} characters or fewer` }, 400);
   }
 
-  // Checked after cheap validation but before retrieval or generation, so a
-  // failed challenge never reaches a paid tier.
   const challenge = await verifyTurnstile(env, body['cf-turnstile-response'], clientIp);
   if (!challenge.ok) {
     log({
@@ -227,6 +192,7 @@ async function handleTroubleshoot(
     );
   }
 
+  // 1. Check zero-cost D1 response cache
   const cached = await readCache(env, query);
   if (cached) {
     cached.meta.duration_ms = Date.now() - started;
@@ -237,7 +203,6 @@ async function handleTroubleshoot(
       ipHash,
       country,
       queryText: query,
-      matchedSlug: cached.matched_runbook?.slug,
       searchStrategy: 'cache',
       model: cached.meta.model,
       cacheHit: true,
@@ -248,12 +213,12 @@ async function handleTroubleshoot(
     });
   }
 
-  const { matches, strategy, dimsQueried } = await retrieve(env, query, 3);
-  const generated = await generate(env, query, matches);
+  // 2. Direct Universal Diagnostic Inference (Gemini / Workers AI fallback)
+  const generated = await generate(env, query, []);
 
   const response: TroubleshootResponse = generated.response;
   response.meta.model = generated.model;
-  response.meta.search_strategy = strategy;
+  response.meta.search_strategy = 'none';
   response.meta.from_cache = false;
   response.meta.duration_ms = Date.now() - started;
 
@@ -264,9 +229,8 @@ async function handleTroubleshoot(
         gemini_calls: generated.provider === 'gemini' ? 1 : 0,
         workers_ai_calls: generated.provider === 'workers-ai' ? 1 : 0,
         neurons_estimate: generated.neurons,
-        vectorize_dims: dimsQueried,
+        vectorize_dims: 0,
       }),
-      matches[0] ? incrementHitCount(env.DB, matches[0].runbook.id) : Promise.resolve(),
     ]).then(() => undefined)
   );
 
@@ -276,8 +240,7 @@ async function handleTroubleshoot(
     ipHash,
     country,
     queryText: query,
-    matchedSlug: response.matched_runbook?.slug,
-    searchStrategy: strategy,
+    searchStrategy: 'none',
     model: generated.model,
   });
 
@@ -289,8 +252,6 @@ async function handleTroubleshoot(
 
 function corsHeaders(): Record<string, string> {
   return {
-    // The read API is public by design, so a wildcard origin is correct here.
-    // There are no cookies and no credentialed requests to protect.
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
@@ -298,35 +259,44 @@ function corsHeaders(): Record<string, string> {
   };
 }
 
-export function json(data: unknown, status = 200, extra: Record<string, string> = {}): Response {
+export function json(
+  data: unknown,
+  status = 200,
+  extraHeaders: Record<string, string> = {}
+): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
       'X-Content-Type-Options': 'nosniff',
       ...corsHeaders(),
-      ...extra,
+      ...extraHeaders,
     },
   });
 }
 
-function html(markup: string): Response {
-  return new Response(markup, {
+function html(content: string, status = 200): Response {
+  return new Response(content, {
+    status,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
       'X-Content-Type-Options': 'nosniff',
-      'Referrer-Policy': 'same-origin',
       'X-Frame-Options': 'DENY',
       'Content-Security-Policy':
-        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+        "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'",
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
     },
   });
 }
 
-function withSecurityHeaders(res: Response): Response {
-  const headers = new Headers(res.headers);
+function withSecurityHeaders(response: Response): Response {
+  const headers = new Headers(response.headers);
   headers.set('X-Content-Type-Options', 'nosniff');
+  headers.set('X-Frame-Options', 'DENY');
   headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-  headers.set('X-Frame-Options', 'SAMEORIGIN');
-  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
